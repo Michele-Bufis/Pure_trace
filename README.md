@@ -371,7 +371,7 @@ than fits here.
 
 <div align="center">
 
-**[Michele Bufis]** · [LinkedIn](https://www.linkedin.com/in/michele-pasquale-bufis-7362242a0) · [michelebufis2002@gmail.com)]
+**[Michele Bufis]** · [LinkedIn](https://www.linkedin.com/in/michele-pasquale-bufis-7362242a0) · michelebufis2002@gmail.com
 
 <sub>Built as a research prototype exploring signal processing, applied statistics, and secure data handling on embedded hardware.</sub>
 
