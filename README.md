@@ -2,14 +2,14 @@
 
 # Pure-Trace
 
-**A single-lead ECG acquisition and personal-baseline HRV analysis system**
-Arduino front-end · PyQt5 touch application · encrypted patient data · statistical anomaly scoring
+**An engineering case study in patient-specific cardiac anomaly detection**
+Signal processing · applied statistics · encrypted health data · concurrent embedded systems
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
-[![PyQt5](https://img.shields.io/badge/UI-PyQt5-41CD52?logo=qt&logoColor=white)](https://pypi.org/project/PyQt5/)
-[![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20%7C%20Linux%20%7C%20Windows%20%7C%20macOS-lightgrey)](#getting-started)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 [![Status](https://img.shields.io/badge/status-research%20prototype-orange)](#disclaimer)
+
+`signal-processing` · `applied-statistics` · `cryptography` · `concurrent-systems` · `embedded-firmware` · `desktop-ui`
 
 </div>
 
@@ -34,37 +34,24 @@ Arduino front-end · PyQt5 touch application · encrypted patient data · statis
 
 ---
 
-## About the project
+## What this is
 
-Pure-Trace is a complete, end-to-end system — hardware, firmware, and desktop
-application — for recording a single-lead ECG and turning it into a
-personalized cardiac variability trend over time, instead of comparing it to
-generic population thresholds.
+Pure-Trace is a complete, working system — Arduino firmware, real-time
+signal processing, an applied-statistics scoring model, and an encrypted
+desktop application — built to answer one specific engineering question:
+*can a low-cost single-lead ECG setup detect meaningful, patient-specific
+deviations in cardiac variability, end to end, with the same rigor a
+production system would need?*
 
-It was built around three ideas:
+This README documents **what was built and why**, not how to set it up —
+the goal is to make the reasoning behind each decision legible, not to hand
+over a plug-and-play package.
 
-1. **HRV (heart rate variability) is highly individual.** Instead of fixed
-   thresholds, Pure-Trace learns *each patient's own* statistical baseline
-   from their previous sessions and flags how much a new recording deviates
-   from it.
-2. **Field devices fail silently if you let them.** Serial disconnects,
-   dropped samples, power loss mid-write, corrupted files — every one of
-   these is handled explicitly instead of crashing the app or corrupting
-   patient data.
-3. **Health data deserves to be encrypted by default**, including derived
-   data (HRV metrics, per-beat classification) that is easy to forget about,
-   with care taken not to leak information through metadata like file size.
-
-Full write-up of every design decision (in Italian) is available in
-[`docs/Pure-Trace_documentazione.md`](docs/Pure-Trace_documentazione.md).
-
----
-
-## Vision
+## The idea
 
 Commercial wearables flag "abnormal" heart rate variability against
 population-wide thresholds — the same cutoff for everyone, regardless of a
-person's own baseline physiology. Pure-Trace explores a different idea:
+person's own baseline physiology. Pure-Trace explores a different approach:
 build a **personal, per-patient statistical model** instead, and measure how
 much a new recording deviates from *that specific person's own history*
 rather than from a population average.
@@ -84,16 +71,9 @@ intent:
   on the device itself, and sessions export to EDF+, a standard clinical
   format independent of this software.
 
-This repository is the **working proof-of-concept** for that idea: it shows
-that the acquisition → filtering → R-peak detection → HRV → baseline-scoring
-→ encrypted-export pipeline runs end-to-end, and that the statistical layer
-holds up under real edge cases (see [Technical highlights](#technical-highlights)).
-The specific components used to build it — Arduino, Raspberry Pi, this
-particular ECG sensor — are prototype choices, not the product itself; see
-[Known limitations](#known-limitations) for what a production version would
-need to change.
-
----
+This repository is the proof-of-concept for that idea: it demonstrates that
+the full pipeline runs end-to-end, and that the statistical layer holds up
+under real edge cases — the subject of the next section.
 
 ## Screenshots
 
@@ -104,7 +84,6 @@ need to change.
     - acquisition_live.png  -> live ECG trace + heart rate during a recording
     - archive_list.png      -> session list with status colors
     - session_detail.png    -> full trace + colored RR strip + metrics grid
-    - hardware.png          -> Arduino + AD8232 wiring / enclosure
 -->
 
 <table>
@@ -130,91 +109,170 @@ need to change.
 
 ## Table of contents
 
-- [Vision](#vision)
-- [Features](#features)
-- [Technical highlights](#technical-highlights)
-- [How it works](#how-it-works)
-- [Hardware](#hardware)
+- [Skills & concepts applied](#skills--concepts-applied)
+- [Engineering deep dives](#engineering-deep-dives)
+- [Architecture](#architecture)
+- [Privacy & data model](#privacy--data-model)
 - [Tech stack](#tech-stack)
-- [Getting started](#getting-started)
 - [Project structure](#project-structure)
-- [Configuration](#configuration)
-- [Security & privacy](#security--privacy)
-- [Known limitations](#known-limitations)
-- [Documentation](#documentation)
-- [Possible next steps](#possible-next-steps)
-- [License](#license)
-- [Author](#author)
+- [Production-readiness considerations](#production-readiness-considerations)
+- [Full documentation](#full-documentation)
 
 ---
 
-## Features
+## Skills & concepts applied
 
-- 📈 **Real-time ECG monitoring** at 500 Hz with live digital filtering
-  (50 Hz notch + 0.5–40 Hz bandpass) and on-screen heart rate.
-- 🫀 **Automatic R-peak detection** with an adaptive threshold and
-  refractory period, used both live and for offline re-analysis.
-- 🧠 **Personal baseline modelling** — after a handful of sessions, every new
-  recording is statistically compared against the patient's own history
-  (Mahalanobis distance, calibrated with two-sample Hotelling T² theory) and
-  classified as `GREEN` / `YELLOW` / `RED` / `NEUTRAL`.
-- 🧹 **Automatic artifact rejection** on RR intervals (physiological range +
-  local median filtering) before any metric is computed.
-- 🔐 **Encryption at rest** for everything patient-related: raw ECG (EDF+),
-  derived HRV features, the baseline model, and the patient's real name —
-  all AES-GCM encrypted with a key derived from a per-profile password.
-- 👤 **Alias-based patient list** — the real name is never shown (or stored
-  in plaintext) before a successful login.
-- 🖐️ **Touch-first UI** designed for an 800×480 Raspberry Pi touchscreen,
-  built with PyQt5 + pyqtgraph.
-- 🗃️ **Session archive** with a per-beat color strip, exportable EDF+
-  recordings, and safe deletion (baseline is kept consistent automatically).
-- 🧵 **Resilient by design** — auto-reconnect on serial errors, reconstruction
-  of small runs of dropped samples, atomic writes for every file on disk,
-  and clear separation between "no data yet" and "corrupted data."
+| Domain | Where it shows up in this project |
+|---|---|
+| **Digital signal processing** | Real-time IIR notch + bandpass filtering with persistent filter state, adaptive R-peak detection, offline vs. streaming filter equivalence |
+| **Applied statistics** | Multivariate outlier detection (Mahalanobis distance), correct small-sample calibration (Hotelling T² instead of χ²), robust (median/MAD) z-scoring |
+| **Applied cryptography** | AES-GCM authenticated encryption, PBKDF2 key derivation, side-channel-aware design (padding to hide plaintext length) |
+| **Concurrent systems** | Producer/consumer threading (serial ↔ processing ↔ UI), a thread-safe circular buffer, a lock-free O(1) sliding-window maximum |
+| **Embedded firmware** | Non-blocking serial I/O, drift-free timing via `micros()`, a fault-tolerant serial protocol with sequence numbers |
+| **Resilient systems design** | Atomic file writes, crash-safe multi-step operations, explicit "missing vs. corrupted" data handling |
+| **Applied UX** | A touch-first, single-purpose interface designed for a fixed 800×480 embedded display, not a general-purpose desktop app |
 
-## Technical highlights
+## Engineering deep dives
 
-A few implementation details worth calling out if you're reviewing the code:
+Each of these started as a bug, a wrong assumption, or a "this works but is
+it actually correct?" moment. They're the parts of the project worth
+reading the code for.
 
-- **Statistically correct baseline thresholds.** Since the baseline's mean
-  and covariance are *estimated* from a small pool of sessions rather than
-  known exactly, using a plain χ² threshold on the Mahalanobis distance
-  inflates the false-positive rate significantly at low sample sizes. The
-  model instead uses two-sample Hotelling T² theory to derive statistically
-  calibrated GREEN/YELLOW/RED cutoffs. See `analysis_engine.py`.
-- **R-peak apex snapping.** The real-time detector fires on the first sample
-  that crosses threshold, not on the true peak — and that lag varies
-  breath-to-breath as R-wave amplitude is modulated by respiration, which
-  would leak directly into RMSSD (a beat-to-beat variability metric). Offline
-  analysis snaps each detection to the true local maximum before computing
-  HRV metrics.
-- **Encrypted file sizes don't leak information.** Derived files (per-beat
-  colormap, HRV features) are padded to a fixed block size before
-  encryption, so their size on disk can't be used to infer the number of
-  heartbeats — and therefore heart rate — without decrypting them.
-- **Crash-safe writes throughout.** Every file (profile creation, session
-  data, baseline) is written to a temp file, `fsync`'d (file *and*
-  containing directory), then atomically renamed — so a power loss on the
-  target Raspberry Pi never leaves a half-written, unreadable file behind.
-- **"Missing" vs "corrupted" are never conflated.** A baseline file that
-  fails to decrypt is *not* treated as an empty baseline (which would
-  silently overwrite months of patient history) — it raises explicitly and
-  disables scoring until resolved.
-- **Lock-free O(1) sliding-window maximum** for the adaptive R-peak
-  threshold, using a monotonic deque instead of re-scanning the window on
-  every sample — relevant on a Raspberry Pi's limited CPU budget.
-- **Sample-accurate gap reconstruction.** The firmware keeps a sequence
-  counter running even when it has to skip sending a sample (serial buffer
-  full); the app uses it to detect drops and linearly interpolate small gaps
-  so the RR-interval timebase never silently drifts.
-- **Filtering never touches the exported signal.** The digital filter feeds
-  the live display and the R-peak/HRV pipeline only; `EDFWriter` always
-  writes the unmodified raw ADC samples to disk. A clinician opening the
-  exported EDF+ file always sees exactly what the sensor measured, not a
-  processed version of it.
+### 1. Calibrating the baseline thresholds correctly, not just plausibly
 
-## How it works
+**Problem.** A new session is flagged `RED` if it's statistically far from
+the patient's historical baseline. The obvious way to define "far" is a χ²
+threshold on the Mahalanobis distance — that's the textbook formula when
+mean and covariance are *known*.
+
+**Why the obvious approach is wrong here.** They aren't known — they're
+*estimated* from a handful of previous sessions per patient. Plugging
+estimated parameters into a formula that assumes they're exact understates
+the real uncertainty. Measured against the intended 1% false-positive rate,
+the naive χ² threshold produced roughly **20% false `RED` classifications**
+at typical early sample sizes (n≈5) — a model that would cry wolf on a
+healthy patient one time in five.
+
+**What was done.** Replaced it with two-sample Hotelling T² theory, which
+accounts for the fact that the reference distribution itself is estimated:
+the distance is rescaled and compared against an F-distribution with degrees
+of freedom tied to the number of sessions and features, only activating once
+there are enough sessions for those degrees of freedom to be valid. This is
+the difference between a model that is *statistically defensible* and one
+that merely looks reasonable in a demo.
+
+*(`analysis_engine.py`, `BaselineModel`; reasoning also documented inline in
+`config.py`.)*
+
+### 2. Deciding what "signal fidelity" actually means
+
+**Problem.** The real-time R-peak detector fires on the first sample that
+crosses an adaptive threshold — not on the true peak of the R-wave.
+
+**Why it matters.** That lag isn't constant: R-wave amplitude is modulated
+by respiration, so the detection lag varies breath to breath. RMSSD, the HRV
+metric most sensitive to beat-to-beat variation, picks that variation up
+directly as if it were physiological — it isn't, it's a detector artifact.
+
+**What was done.** Offline analysis re-locates every detected peak to its
+true local maximum before computing any metric ("apex snapping"). Measured
+effect: RMSSD error dropped from roughly **+5% to +1%**. This also clarified
+a broader design principle applied throughout the project: filtering and
+detection are allowed to be approximate for *display* purposes, but never
+for anything that feeds a number the clinician will actually read — and the
+raw signal that gets exported is never touched by any of this in the first
+place (see [The idea](#the-idea)).
+
+*(`analysis_engine.py`, `_snap_to_apex`.)*
+
+### 3. Not leaking data through metadata
+
+**Problem.** Every derived artifact — the per-beat classification, the HRV
+feature file — is AES-GCM encrypted. Encryption hides content. It does
+**not** hide length.
+
+**Why it matters.** The per-beat colormap has one byte per heartbeat. Its
+file size on disk, without decrypting a single byte, directly reveals beat
+count — and therefore average heart rate — to anyone with access to the
+storage medium.
+
+**What was done.** Every payload is padded to a fixed block size before
+encryption, so ciphertext length stops correlating with the number of
+recorded beats. It's a small addition, but it's the difference between "the
+data is encrypted" and "the data is actually private" — a distinction that's
+easy to miss and rarely tested for.
+
+*(`secure_store.py`, `_pad`/`_unpad`.)*
+
+### 4. Treating "no data" and "corrupted data" as different failure modes
+
+**Problem.** A read helper that returns a sensible default when a file is
+missing is convenient — until the same fallback also fires for a file that
+exists but fails to decrypt (wrong key, bit rot, partial write).
+
+**Why it matters.** For most files, silently treating "corrupted" as "empty"
+is harmless. For the baseline file specifically, it is not: the analysis
+pipeline would interpret a decrypt failure as "no baseline yet," rebuild an
+empty pool, and **overwrite months of patient history** with it — a data-loss
+bug that is invisible until someone notices the baseline "reset itself."
+
+**What was done.** The baseline reader uses a strict mode that raises an
+explicit, distinguishable error on decrypt failure instead of degrading to a
+default; scoring is disabled until the problem is resolved, and the file is
+never rewritten in that state. Every other (lower-stakes) read in the app
+still degrades gracefully — this is a deliberate exception, not a global
+policy change.
+
+*(`secure_store.py`, `read_json(strict=True)`; `analysis_engine.py`,
+`_load_model`.)*
+
+### 5. Real-time performance on hardware that doesn't have much to spare
+
+**Problem.** R-peak detection needs the maximum value in a sliding window,
+recomputed on every incoming sample, on a Raspberry Pi.
+
+**Why the obvious approach doesn't scale.** Recomputing `max()` over the
+window on every sample is O(window size) per sample — at 500 Hz with a
+1-second window, that's a real, measurable amount of wasted CPU on
+constrained hardware, and it compounds with everything else the UI thread
+needs to do to stay responsive.
+
+**What was done.** A monotonic deque gives an O(1) amortized sliding-window
+maximum. The same performance-first mindset shows up elsewhere: offline
+filtering processes an entire session as one array operation instead of
+looping sample-by-sample (~2000x faster, same numerical result, because the
+filter's internal state is threaded through explicitly either way), and
+acquisition is split across three cooperating threads — serial I/O,
+DSP/detection, and UI rendering — so none of them can stall another.
+
+*(`signal_processing.py`, `RPeakDetector._window_max`, `DigitalFilter`.)*
+
+### 6. Assuming the field will go wrong, because it will
+
+**Problem.** This runs on a Raspberry Pi that can lose power mid-write, an
+Arduino connected over a USB cable that can disconnect mid-session, and a
+serial link that can drop samples under load — with, potentially, no
+technician nearby when it happens.
+
+**What was done, concretely:**
+- The firmware keeps a running sample counter even when it has to *skip*
+  sending a sample under backpressure, so drops are countable, not silent;
+  the app reconstructs short gaps by interpolation instead of letting the
+  RR-interval timebase quietly drift.
+- Every file write (a new patient profile, a session, the baseline) goes to
+  a temp file, is `fsync`'d — file *and* containing directory — then
+  atomically renamed, so a power loss never leaves a half-written file
+  where a good one should be.
+- Profile creation builds the entire profile in a hidden staging directory
+  and only renames it into place once complete, so an interrupted creation
+  can't leave a half-built profile that crashes the login screen later.
+
+None of these are exotic techniques. What they demonstrate is the habit of
+asking "what happens if this specific operation is interrupted halfway
+through?" for every operation that touches disk or a wire — not just the
+obviously risky ones.
+
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -231,202 +289,90 @@ flowchart LR
     K --> L["Archive screen\nreview / export / delete"]
 ```
 
-1. The AD8232 front-end amplifies and filters the ECG signal and outputs a
-   leads-off status alongside it.
-2. The Arduino samples at 500 Hz and streams both over USB serial, with a
-   sequence counter so the app can detect dropped samples.
-3. The desktop app filters the live signal, detects beats, and displays the
-   trace and heart rate in real time.
-4. On stop, the raw trace is saved as an encrypted EDF+ file and analyzed
-   offline for HRV metrics.
-5. Once at least 5 long sessions exist, new sessions are scored against the
-   patient's personal baseline and archived with their classification.
+The AD8232 front-end amplifies the ECG signal and exposes a leads-off
+status; the Arduino samples both at 500 Hz and streams them over serial with
+a sequence counter. The desktop app filters the live signal for display and
+detection only, while the raw trace is what actually gets saved. On stop,
+the session is encrypted, written as EDF+, and analyzed offline: HRV metrics
+are computed, checked against the patient's baseline once enough history
+exists, and the result is archived alongside the recording.
 
-## Hardware
+## Privacy & data model
 
-| Component | Notes |
-|---|---|
-| Arduino Nano (or Uno) | Reads the AD8232 and streams samples over serial |
-| AD8232 (SparkFun Single Lead Heart Rate Monitor) | Analog ECG front-end + leads-off detection |
-| ECG electrodes | Standard disposable Ag/AgCl electrodes |
-| Raspberry Pi + 7" 800×480 touchscreen | Runs the desktop application (a regular PC also works for development) |
+Health data handling was treated as a first-class design constraint, not an
+add-on:
 
-**Wiring (AD8232 → Arduino):**
+- Each profile is password-protected (PBKDF2-HMAC-SHA256, 200,000
+  iterations) → a profile-specific AES-128-GCM key; the password itself is
+  never stored.
+- The patient's real name, the raw ECG, HRV metrics, and the baseline model
+  are all encrypted at rest. Only a non-identifying alias is ever shown
+  before login — see [deep dive #3](#3-not-leaking-data-through-metadata) for
+  why encryption alone wasn't treated as sufficient.
+- Exporting a session for external clinical tools produces a **plaintext**
+  file by necessity — the app surfaces an explicit warning before doing so,
+  since protection becomes the user's responsibility from that point on.
 
-| AD8232 pin | Arduino pin |
-|---|---|
-| OUTPUT | A0 |
-| LO+    | D10 |
-| LO-    | D11 |
-| 3.3V   | 3V3 |
-| GND    | GND |
-
-> The AD8232 runs at 3.3V — power it from the **3V3** pin, not 5V.
+*(`secure_store.py`, `data_layer.py`.)*
 
 ## Tech stack
 
-[![PyQt5](https://img.shields.io/badge/PyQt5-UI-41CD52?logo=qt&logoColor=white)](https://pypi.org/project/PyQt5/)
-[![pyqtgraph](https://img.shields.io/badge/pyqtgraph-plotting-blueviolet)](https://www.pyqtgraph.org/)
-[![NumPy](https://img.shields.io/badge/NumPy-numerical-013243?logo=numpy&logoColor=white)](https://numpy.org/)
-[![SciPy](https://img.shields.io/badge/SciPy-signal%20processing-8CAAE6?logo=scipy&logoColor=white)](https://scipy.org/)
-[![cryptography](https://img.shields.io/badge/cryptography-AES--GCM%20%7C%20PBKDF2-critical)](https://cryptography.io/)
-[![pyedflib](https://img.shields.io/badge/pyedflib-EDF%2B%20format-informational)](https://github.com/holger-nahrstaedt/pyedflib)
-[![pyserial](https://img.shields.io/badge/pyserial-serial%20I%2FO-yellow)](https://pyserial.readthedocs.io/)
-[![Arduino](https://img.shields.io/badge/firmware-Arduino%20C%2B%2B-00979D?logo=arduino&logoColor=white)](firmware/pure_trace_firmware.ino)
-
-## Getting started
-
-### Prerequisites
-
-- Python 3.10+
-- Arduino IDE (to flash the firmware)
-- An AD8232 + Arduino wired as described in [Hardware](#hardware)
-
-### Installation
-
-```bash
-git clone https://github.com/<your-username>/pure-trace.git
-cd pure-trace
-
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-### Flash the firmware
-
-1. Open `firmware/pure_trace_firmware.ino` in the Arduino IDE.
-2. Select your board (Arduino Nano/Uno) and port.
-3. Upload. The serial protocol (115200 baud, 500 Hz) is documented in the
-   file's header comment.
-
-### Create a patient profile
-
-```bash
-python tools/create_profile.py "Full Name" [alias]
-```
-
-You'll be asked for a password (min. 8 characters) — this derives the
-profile's encryption key. The real name stays encrypted on disk; the profile
-selector only ever shows the alias (initials, by default) before login.
-
-### Run the app
-
-```bash
-python -m pure_trace.main
-```
+`Python` · `PyQt5` + `pyqtgraph` (UI/plotting) · `NumPy` / `SciPy` (DSP) ·
+`cryptography` (AES-GCM, PBKDF2) · `pyedflib` (EDF+ clinical format) ·
+`pyserial` · `Arduino C++` (firmware)
 
 ## Project structure
 
 ```
 pure-trace/
-├── firmware/
-│   └── pure_trace_firmware.ino     # Arduino sketch (ECG front-end)
-├── pure_trace/                     # application package
-│   ├── main.py                     # entry point
-│   ├── config.py                   # centralized parameters
-│   ├── data_layer.py               # profiles, encryption, EDF+ format
-│   ├── secure_store.py             # encryption-at-rest for derived data
-│   ├── analysis_engine.py          # offline HRV analysis + baseline model
-│   ├── signal_processing.py        # digital filter + R-peak detection
-│   ├── serial_port.py              # Arduino port auto-detection
-│   ├── logging_setup.py            # application logging
-│   └── ui/
-│       ├── profile_dialog.py       # login screen
-│       ├── acquisition_screen.py   # live recording screen
-│       ├── archive_screen.py       # session archive screen
-│       ├── widgets.py              # reusable ECG plot widget
-│       └── theme.py                # design system / QSS
-├── tools/
-│   └── create_profile.py           # CLI to create a patient profile
-├── docs/
-│   ├── Pure-Trace_documentazione.md  # in-depth technical write-up (Italian)
-│   └── screenshots/                  # images used in this README
-├── requirements.txt
-└── README.md
+├── firmware/pure_trace_firmware.ino   # Arduino sketch (ECG front-end)
+├── pure_trace/                        # application package
+│   ├── main.py, config.py
+│   ├── data_layer.py, secure_store.py       # profiles, encryption, EDF+
+│   ├── analysis_engine.py                   # HRV analysis + baseline model
+│   ├── signal_processing.py, serial_port.py # real-time DSP + serial I/O
+│   ├── logging_setup.py
+│   └── ui/                                  # PyQt5 screens + design system
+├── tools/create_profile.py
+├── docs/                              # full technical write-up + screenshots
+└── requirements.txt
 ```
 
-> Adjust this tree to match how you've actually laid out the folders
-> locally before pushing — it's derived from the imports in the code.
+Full breakdown of every file, by responsibility, is in the
+[technical documentation](#full-documentation).
 
-## Configuration
+## Production-readiness considerations
 
-Every tunable parameter — data path, sampling rate, filter cutoffs, artifact
-rejection thresholds, baseline calibration — lives in `pure_trace/config.py`,
-with comments explaining the reasoning behind each value.
+Built with hobbyist-grade parts on purpose, to validate the pipeline and the
+statistical layer without waiting on certified hardware. What follows are
+choices tied to *this specific build*, not to the underlying approach — a
+production version would swap the front-end rather than solve these in
+place:
 
-The data directory defaults to a path anchored to the package location, and
-can be overridden with:
-
-```bash
-export PURE_TRACE_DATA=/custom/path
-```
-
-## Security & privacy
-
-- Each profile is password-protected (PBKDF2-HMAC-SHA256, 200,000
-  iterations) → a profile-specific AES-128-GCM key.
-- Patient name, raw ECG, HRV metrics, and the baseline model are all
-  **encrypted at rest**; only a non-identifying alias is ever shown before
-  login.
-- Encrypted files are padded to fixed-size blocks before encryption, so file
-  size on disk can't be used to infer the number of recorded heartbeats.
-- Exporting a session produces a **plaintext** file — the app shows an
-  explicit warning before doing so.
-
-See `pure_trace/secure_store.py` and `pure_trace/data_layer.py` for the
-implementation, and the [full documentation](#documentation) for the
-reasoning behind each choice.
-
-> **Before pushing:** make sure no real patient data (profiles, sessions,
-> logs) created during development or testing is committed — see
-> [`.gitignore`](./.gitignore).
-
-## Known limitations
-
-This prototype is built with hobbyist-grade parts on purpose, to prove the
-pipeline and the statistical layer work end-to-end without waiting on
-certified hardware. The items below are choices tied to *this specific
-build*, not to the underlying idea — a production version would swap the
-front-end for certified components rather than solve these in place:
-
-- **Not a diagnostic tool.** It reports relative deviations from a personal
-  baseline, not medical conditions — by design, not as a caveat.
+- **Not a diagnostic tool** — reports relative deviations from a personal
+  baseline, not medical conditions, by design.
 - **This sensor isn't mV-calibrated.** The AD8232 used for the demo doesn't
-  provide a calibrated analog output; the app declares this explicitly in
-  the UI and in the exported file's metadata rather than implying a
-  precision the hardware doesn't have. A certified front-end would provide
-  a calibrated signal without any change to the software downstream.
-- **Secure deletion is a mitigation, not a guarantee.** Overwrite-before-unlink
-  doesn't defeat wear-leveling on SD/SSD media — a real limitation of the
-  storage medium, independent of the encryption itself.
+  provide a calibrated analog output; the app states this explicitly rather
+  than implying a precision the hardware doesn't have. A certified front-end
+  would provide a calibrated signal with no change to the software
+  downstream — the statistical layer only ever consumes derived features.
+- **Secure deletion is a mitigation, not a guarantee** on SD/SSD media with
+  wear leveling — a property of the storage medium, independent of the
+  encryption scheme itself.
 
-## Documentation
+## Full documentation
 
 A complete theory + code walkthrough (in Italian) is available in
 [`docs/Pure-Trace_documentazione.md`](docs/Pure-Trace_documentazione.md),
-covering every design decision in the project, file by file.
-
-## Possible next steps
-
-- [ ] Decouple the statistical layer (baseline modelling + scoring) into a
-      standalone library, independent of any specific ECG front-end
-- [ ] Automated tests for the artifact-rejection and baseline scoring logic
-- [ ] Configurable HRV feature set (frequency-domain metrics)
-- [ ] Optional cloud-free multi-device sync between two Pure-Trace units
-- [ ] English translation of the in-depth documentation
-
-## License
-
-Distributed under the MIT License — see [`LICENSE`](./LICENSE).
-
-## Author
-
-**[Your Name]**
-[LinkedIn](https://linkedin.com/in/your-profile) · [Email](mailto:you@example.com)
+covering every design decision in the project, file by file, in more depth
+than fits here.
 
 ---
 
 <div align="center">
+
+MIT License — see [`LICENSE`](./LICENSE) · **[Your Name]** · [LinkedIn](https://linkedin.com/in/your-profile) · [Email](mailto:you@example.com)
+
 <sub>Built as a research prototype exploring signal processing, applied statistics, and secure data handling on embedded hardware.</sub>
+
 </div>
