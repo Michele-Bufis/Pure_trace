@@ -371,7 +371,7 @@ than fits here.
 
 <div align="center">
 
-MIT License — see [`LICENSE`](./LICENSE) · **[Your Name]** · [LinkedIn](https://linkedin.com/in/your-profile) · [Email](mailto:you@example.com)
+MIT License · **[Your Name]** · [LinkedIn](https://www.linkedin.com/in/michele-pasquale-bufis-7362242a0) · [Email](michelebufis2002@gmail.com)
 
 <sub>Built as a research prototype exploring signal processing, applied statistics, and secure data handling on embedded hardware.</sub>
 
