@@ -29,8 +29,7 @@ Signal processing · applied statistics · encrypted health data · concurrent e
 > **Pure-Trace is a research prototype. It is not a medical device and must
 > not be used for diagnostic purposes.** It reports statistical deviations
 > from a patient's own historical baseline — it does not diagnose any
-> medical condition. The disclaimer is also shown explicitly in the app's
-> login screen.
+> medical condition.
 
 ---
 
