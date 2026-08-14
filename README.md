@@ -362,7 +362,7 @@ place:
 ## Full documentation
 
 A complete theory + code walkthrough (in Italian) is available in
-[`docs/Pure-Trace_documentazione.md`](docs/Pure-Trace_documentazione.md),
+[`docs/Pure-Trace_documentazione.md`](docs/Complete_Project_Documentation.md),
 covering every design decision in the project, file by file, in more depth
 than fits here.
 
