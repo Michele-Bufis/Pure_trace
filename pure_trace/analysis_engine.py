@@ -184,12 +184,12 @@ def quality_ok(valid_beats: int, artifact_fraction: float) -> bool:
             and artifact_fraction <= config.MAX_ARTIFACT_FRAC)
 
 
-_FEATURE_NAMES = ["mean_hr", "sdnn", "rmssd", "pnn50"]
+_FEATURE_NAMES = ["mean_hr", "sdnn", "rmssd", "pnn50","qrs_duration"]
 # v2 aggiunge ``session_ids``: senza, cancellare una sessione dall'archivio non
 # ne rimuoveva il vettore dalla baseline, e il modello divergeva da ciò che
 # l'utente vedeva. Le baseline v1 si caricano ancora, con id ignoti.
-_BASELINE_SCHEMA = "mahalanobis-v2"
-_BASELINE_SCHEMA_LEGACY = "mahalanobis-v1"
+_BASELINE_SCHEMA = "mahalanobis-v3"
+_BASELINE_SCHEMA_LEGACY = "mahalanobis-v2"
 
 # Perché una sessione non è stata valutata. NEUTRAL da solo non basta: nasconde
 # tre situazioni diverse, con tre azioni diverse per chi usa il dispositivo.
@@ -206,13 +206,15 @@ def features_to_vector(features: dict):
     sdnn = features.get("sdnn")
     rmssd = features.get("rmssd")
     pnn50 = features.get("pnn50")
-    if any(v is None for v in (mean_rr, sdnn, rmssd, pnn50)):
+    #aggiunta qrs_duration
+    qrs = features.get("qrs_duration")
+    if any(v is None for v in (mean_rr, sdnn, rmssd, pnn50,qrs)):
         return None
     if mean_rr <= 0:                 # guardia contro la divisione per zero
         return None
-    # ``sdnn``/``rmssd``/``pnn50`` possono legittimamente valere 0.0: un test di
+    # ``sdnn``/``rmssd``/``pnn50/ qrs`` possono legittimamente valere 0.0: un test di
     # verità (``if not sdnn``) li scarterebbe come mancanti.
-    return np.array([60.0 / mean_rr, sdnn, rmssd, pnn50], dtype=float)
+    return np.array([60.0 / mean_rr, sdnn, rmssd, pnn50, qrs], dtype=float)
 
 
 class BaselineModel:
@@ -344,12 +346,15 @@ class HrvAnalyser:
         colormap_uint8 : np.ndarray dtype=uint8, one entry per RR interval
         features : dict with mean_rr, sdnn, rmssd, pnn50 (float or None)
         """
-        peaks = detect_rpeak_indices(raw_samples, self._fs)
+        filtered = filter_signal(raw_samples, self._fs)
+        peaks = detect_rpeaks(filtered, self._fs)
         rr = (np.diff(peaks).astype(np.float64) / self._fs
+       # peaks = detect_rpeak_indices(raw_samples, self._fs)
+       # rr = (np.diff(peaks).astype(np.float64) / self._fs
               if len(peaks) >= 2 else np.array([], dtype=np.float64))
         if len(rr) < 2:
             return ("NEUTRAL", np.array([], dtype=np.uint8), {
-                "mean_rr": None, "sdnn": None, "rmssd": None, "pnn50": None,
+                "mean_rr": None, "sdnn": None, "rmssd": None, "pnn50": None,"qrs_duration": None,
                 "status": "NEUTRAL", "mahalanobis_d2": None, "feature_z": None,
                 "rr_peaks": [int(p) for p in peaks],
                 "baseline_error": self.baseline_error,
@@ -363,8 +368,11 @@ class HrvAnalyser:
         valid_beats = int(mask.sum())
         artifact_fraction = float(1.0 - valid_beats / len(rr))
         duration_s = len(raw_samples) / self._fs
+        # Durata QRS per ogni picco, poi riassunta a mediana dentro _compute_features.
+        qrs_durations = extract_qrs_durations(filtered, peaks, self._fs)
+        features = self._compute_features(rr, duration_s, mask, qrs_durations)
 
-        features = self._compute_features(rr, duration_s, mask)
+       # features = self._compute_features(rr, duration_s, mask)
         colormap = self._build_local_colormap(rr, mask)
         features["status"] = "NEUTRAL"
         features["mahalanobis_d2"] = None
@@ -426,16 +434,23 @@ class HrvAnalyser:
             # come tale porterebbe a sovrascriverlo alla prima sessione lunga.
             self.baseline_error = True
             return BaselineModel([])
-        if isinstance(data, dict):
-            schema = data.get("schema")
-            if schema == _BASELINE_SCHEMA:
-                return BaselineModel(data.get("feature_pool", []),
-                                     data.get("session_ids"))
-            if schema == _BASELINE_SCHEMA_LEGACY:
+         if isinstance(data, dict) and data.get("schema") == _BASELINE_SCHEMA:
+        return BaselineModel(data.get("feature_pool", []),
+                             data.get("session_ids"))
+    # Schema assente o precedente (v1/v2): dimensionalità del vettore diversa
+    # (4 invece di 5, per l'assenza di qrs_duration), non compatibile con il
+    # pool attuale. Si riparte da zero sullo schema nuovo.
+  return BaselineModel([])
+       # if isinstance(data, dict)
+        #    schema = data.get("schema")
+         #   if schema == _BASELINE_SCHEMA:
+          #      return BaselineModel(data.get("feature_pool", []),
+           #                          data.get("session_ids"))
+            #if schema == _BASELINE_SCHEMA_LEGACY:
                 # v1: nessun id: i vettori restano, ma non sono più associabili
                 # alle sessioni e quindi non si rimuovono alla cancellazione.
-                return BaselineModel(data.get("feature_pool", []))
-        return BaselineModel([])
+             #   return BaselineModel(data.get("feature_pool", []))
+        #return BaselineModel([])
 
     def _save_model(self) -> None:
         if self.baseline_error:
@@ -445,9 +460,10 @@ class HrvAnalyser:
     def _extract_rr_intervals(self, raw: np.ndarray) -> np.ndarray:
         """Apply fresh DigitalFilter + RPeakDetector; return RR intervals (seconds)."""
         return extract_rr_intervals(raw, self._fs)
-
+ #modifica compute_features aggiungendo qrs come features
     def _compute_features(self, rr: np.ndarray, duration_s: float,
                           mask: Optional[np.ndarray] = None) -> dict:
+                          qrs_durations: Optional[np.ndarray] = None) -> dict:
         """Compute HRV features from RR intervals.
 
         ``rr`` è la serie COMPLETA e ``mask`` marca gli intervalli validi. La
@@ -465,11 +481,20 @@ class HrvAnalyser:
         valid = rr[mask]
         N = len(valid)
 
+        #Aggiunta qrs
+         def _median_qrs():
+        if qrs_durations is None:
+            return None
+        vals = np.asarray(qrs_durations, dtype=float)
+        vals = vals[~np.isnan(vals)]
+        return float(np.median(vals)) if len(vals) > 0 else None
+
+
         if N == 0:
-            return {"mean_rr": None, "sdnn": None, "rmssd": None, "pnn50": None}
+            return {"mean_rr": None, "sdnn": None, "rmssd": None, "pnn50": None, "qrs_duration": None}
 
         mean_rr = float(np.mean(valid))
-        empty = {"mean_rr": mean_rr, "sdnn": None, "rmssd": None, "pnn50": None}
+        empty = {"mean_rr": mean_rr, "sdnn": None, "rmssd": None, "pnn50": None, "qrs_duration": None}
 
         # Sessione breve (<60 s): solo mean_rr
         if N < 2 or duration_s < config.DURATION_MIN_SCORED_S:
@@ -479,13 +504,14 @@ class HrvAnalyser:
         diffs = np.diff(rr)[mask[:-1] & mask[1:]]
         if len(diffs) == 0:
             return {"mean_rr": mean_rr, "sdnn": float(np.std(valid, ddof=1)),
-                    "rmssd": None, "pnn50": None}
+                    "rmssd": None, "pnn50": None, "qrs_duration": _median_qrs()}
 
         return {
             "mean_rr": mean_rr,
             "sdnn": float(np.std(valid, ddof=1)),
             "rmssd": float(np.sqrt(np.mean(diffs ** 2))),
             "pnn50": float(np.sum(np.abs(diffs) > 0.050) / len(diffs) * 100),
+            "qrs_duration": _median_qrs(),
         }
 
     def _build_local_colormap(self, rr: np.ndarray, mask: np.ndarray) -> np.ndarray:
