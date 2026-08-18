@@ -85,10 +85,15 @@ def main():
 
     profile, enc = dialog.get_result()
     window = MainWindow(profile, enc)
+    # Debugging uses the physical device's form factor without changing the
+    # desktop resolution.
+    if config.DEBUG:
+        window.setFixedSize(800, 480)
+        window.show()
     # Fullscreen is right for the appliance, but WSLg can display a fullscreen
     # Qt window without forwarding pointer input to it.  Use the window manager
-    # while developing through WSL, regardless of whether the mock is enabled.
-    if config.DEBUG or _is_wsl():
+    # while developing through WSL.
+    elif _is_wsl():
         window.showMaximized()
     else:
         window.showFullScreen()
