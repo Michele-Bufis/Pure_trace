@@ -1,4 +1,5 @@
 import sys
+import platform
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
@@ -10,6 +11,11 @@ from pure_trace.ui import theme
 from pure_trace.ui.acquisition_screen import AcquisitionScreen
 from pure_trace.ui.archive_screen import ArchiveScreen, TabBar
 from pure_trace.ui.profile_dialog import ProfileSelectionDialog
+
+
+def _is_wsl() -> bool:
+    """Whether this Qt process is running through the Windows Linux bridge."""
+    return "microsoft" in platform.release().lower()
 
 
 class MainWindow(QMainWindow):
@@ -79,7 +85,13 @@ def main():
 
     profile, enc = dialog.get_result()
     window = MainWindow(profile, enc)
-    window.showFullScreen()
+    # Fullscreen is right for the appliance, but WSLg can display a fullscreen
+    # Qt window without forwarding pointer input to it.  Use the window manager
+    # while developing through WSL, regardless of whether the mock is enabled.
+    if config.DEBUG or _is_wsl():
+        window.showMaximized()
+    else:
+        window.showFullScreen()
     sys.exit(app.exec_())
 
 
