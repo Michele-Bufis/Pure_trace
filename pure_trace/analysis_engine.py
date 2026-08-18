@@ -43,13 +43,13 @@ def _snap_to_apex(filtered: np.ndarray, crossings: list[int], fs: int) -> list[i
 #----Calcolo QRS ---
 #----Sostituzione di def detect_rpeak con queste 3 funzioni
 #def detect_rpeak_indices(raw: np.ndarray, fs: int = config.SAMPLING_RATE) -> np.ndarray:
-   """Indici (in campioni, riferiti a ``raw``) dei picchi R rilevati.
+#    """Indici (in campioni, riferiti a ``raw``) dei picchi R rilevati.
 
-    Il segnale è filtrato in un'unica chiamata batch, poi i primi
-    ``config.FILTER_WARMUP_S`` secondi vengono scartati: contengono il
-    transitorio di assestamento del passa-alto, che ha ampiezza paragonabile a
-    un'onda R e produrrebbe battiti fantasma. Ogni rilevamento viene infine
-    agganciato all'apice dell'onda R (vedi ``_snap_to_apex``)."""
+#     Il segnale è filtrato in un'unica chiamata batch, poi i primi
+#     ``config.FILTER_WARMUP_S`` secondi vengono scartati: contengono il
+#     transitorio di assestamento del passa-alto, che ha ampiezza paragonabile a
+#     un'onda R e produrrebbe battiti fantasma. Ogni rilevamento viene infine
+#     agganciato all'apice dell'onda R (vedi ``_snap_to_apex``)."""
  #   raw = np.asarray(raw)
   #  filtered = DigitalFilter(fs=fs).process_array(raw)
    # skip = min(int(config.FILTER_WARMUP_S * fs), len(filtered))
@@ -349,8 +349,6 @@ class HrvAnalyser:
         filtered = filter_signal(raw_samples, self._fs)
         peaks = detect_rpeaks(filtered, self._fs)
         rr = (np.diff(peaks).astype(np.float64) / self._fs
-       # peaks = detect_rpeak_indices(raw_samples, self._fs)
-       # rr = (np.diff(peaks).astype(np.float64) / self._fs
               if len(peaks) >= 2 else np.array([], dtype=np.float64))
         if len(rr) < 2:
             return ("NEUTRAL", np.array([], dtype=np.uint8), {
@@ -372,7 +370,6 @@ class HrvAnalyser:
         qrs_durations = extract_qrs_durations(filtered, peaks, self._fs)
         features = self._compute_features(rr, duration_s, mask, qrs_durations)
 
-       # features = self._compute_features(rr, duration_s, mask)
         colormap = self._build_local_colormap(rr, mask)
         features["status"] = "NEUTRAL"
         features["mahalanobis_d2"] = None
@@ -434,13 +431,13 @@ class HrvAnalyser:
             # come tale porterebbe a sovrascriverlo alla prima sessione lunga.
             self.baseline_error = True
             return BaselineModel([])
-         if isinstance(data, dict) and data.get("schema") == _BASELINE_SCHEMA:
-        return BaselineModel(data.get("feature_pool", []),
-                             data.get("session_ids"))
+        if isinstance(data, dict) and data.get("schema") == _BASELINE_SCHEMA:
+            return BaselineModel(data.get("feature_pool", []),
+                                 data.get("session_ids"))
     # Schema assente o precedente (v1/v2): dimensionalità del vettore diversa
     # (4 invece di 5, per l'assenza di qrs_duration), non compatibile con il
     # pool attuale. Si riparte da zero sullo schema nuovo.
-  return BaselineModel([])
+        return BaselineModel([])
        # if isinstance(data, dict)
         #    schema = data.get("schema")
          #   if schema == _BASELINE_SCHEMA:
@@ -462,7 +459,7 @@ class HrvAnalyser:
         return extract_rr_intervals(raw, self._fs)
  #modifica compute_features aggiungendo qrs come features
     def _compute_features(self, rr: np.ndarray, duration_s: float,
-                          mask: Optional[np.ndarray] = None) -> dict:
+                          mask: Optional[np.ndarray] = None,
                           qrs_durations: Optional[np.ndarray] = None) -> dict:
         """Compute HRV features from RR intervals.
 
@@ -482,12 +479,12 @@ class HrvAnalyser:
         N = len(valid)
 
         #Aggiunta qrs
-         def _median_qrs():
-        if qrs_durations is None:
-            return None
-        vals = np.asarray(qrs_durations, dtype=float)
-        vals = vals[~np.isnan(vals)]
-        return float(np.median(vals)) if len(vals) > 0 else None
+        def _median_qrs() -> Optional[float]:
+            if qrs_durations is None:
+                return None
+            vals = np.asarray(qrs_durations, dtype=float)
+            vals = vals[~np.isnan(vals)]
+            return float(np.median(vals)) if len(vals) > 0 else None
 
 
         if N == 0:
