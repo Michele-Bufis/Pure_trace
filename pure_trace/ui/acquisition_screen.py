@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import (
 
 from pure_trace import config
 from pure_trace.logging_setup import get_logger
+from pure_trace.mock_device import MockSerialDevice
 from pure_trace.serial_port import find_port
 from pure_trace.data_layer import Profile, EncryptionManager, EDFWriter
 from pure_trace.analysis_engine import (
@@ -147,6 +148,16 @@ class _SerialThread(threading.Thread):
         ``except Exception: continue`` che mandava la CPU al 100% se il cavo USB
         veniva staccato."""
         while not self._stop_evt.is_set():
+            if config.DEBUG:
+                self._set_error(None)
+                log.info('DEBUG=1: dispositivo ECG simulato connesso')
+                with MockSerialDevice(sample_rate=config.SAMPLING_RATE) as ser:
+                    while not self._stop_evt.is_set():
+                        line = ser.readline().decode('ascii', errors='ignore').strip()
+                        if line:
+                            self._handle_line(line)
+                return
+
             port = find_port(self._port)
             if port is None:
                 self._set_error('Arduino non rilevato: controlla il cavo USB')

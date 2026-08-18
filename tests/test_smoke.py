@@ -1,6 +1,7 @@
 import numpy as np
 from pure_trace import config
 from pure_trace.signal_processing import CircularBuffer, DigitalFilter, RPeakDetector
+from pure_trace.mock_device import MockSerialDevice
 
 
 def test_config_constants():
@@ -49,6 +50,16 @@ def test_pipeline_instantiation():
     filt = DigitalFilter(fs=config.SAMPLING_RATE)
     det = RPeakDetector(fs=config.SAMPLING_RATE, refractory_ms=config.REFRACTORY_MS)
     assert buf is not None and filt is not None and det is not None
+
+
+def test_mock_device_matches_arduino_serial_protocol():
+    device = MockSerialDevice(realtime=False)
+    lines = [device.readline().decode('ascii').strip() for _ in range(5)]
+
+    assert lines[0] == 'L,0'
+    assert lines[1].startswith('D,0,')
+    assert lines[2].startswith('D,1,')
+    assert all(0 <= int(line.rsplit(',', 1)[1]) <= 1023 for line in lines[1:])
 
 
 def test_full_pipeline_60bpm():

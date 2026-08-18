@@ -74,6 +74,21 @@ This repository is the proof-of-concept for that idea: it demonstrates that
 the full pipeline runs end-to-end, and that the statistical layer holds up
 under real edge cases — the subject of the next section.
 
+### Device-free UI testing
+
+Set `DEBUG=1` before launching the application to inject a protocol-compatible
+Arduino/AD8232 mock. It streams a synthetic 72 bpm ECG and reports connected
+electrodes, so recording, live rendering, signal processing, saving, and the
+archive all use the same path as the physical device. The mode is opt-in and
+must never be used for clinical or sensor validation.
+
+PowerShell:
+
+```powershell
+$env:DEBUG = '1'
+python -m pure_trace.main
+```
+
 ## Screenshots
 
 <!--

@@ -1,6 +1,10 @@
 import os
 from pathlib import Path
 
+# DEBUG=1 replaces the physical Arduino with the protocol-compatible mock
+# device.  Keep this opt-in so a production launch can never synthesize data.
+DEBUG = os.environ.get("DEBUG") == "1"
+
 # Radice dei dati (profili cifrati e log). Ancorata alla posizione del pacchetto,
 # non alla directory di lavoro: avviata da systemd o da un'altra cartella, l'app
 # scriveva profili e log in un posto diverso da quello dove li aveva creati.
