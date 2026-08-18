@@ -40,23 +40,99 @@ def _snap_to_apex(filtered: np.ndarray, crossings: list[int], fs: int) -> list[i
     n = len(filtered)
     return [int(i + np.argmax(filtered[i:min(i + window + 1, n)])) for i in crossings]
 
-
-def detect_rpeak_indices(raw: np.ndarray, fs: int = config.SAMPLING_RATE) -> np.ndarray:
-    """Indici (in campioni, riferiti a ``raw``) dei picchi R rilevati.
+#----Calcolo QRS ---
+#----Sostituzione di def detect_rpeak con queste 3 funzioni
+#def detect_rpeak_indices(raw: np.ndarray, fs: int = config.SAMPLING_RATE) -> np.ndarray:
+   """Indici (in campioni, riferiti a ``raw``) dei picchi R rilevati.
 
     Il segnale è filtrato in un'unica chiamata batch, poi i primi
     ``config.FILTER_WARMUP_S`` secondi vengono scartati: contengono il
     transitorio di assestamento del passa-alto, che ha ampiezza paragonabile a
     un'onda R e produrrebbe battiti fantasma. Ogni rilevamento viene infine
     agganciato all'apice dell'onda R (vedi ``_snap_to_apex``)."""
-    raw = np.asarray(raw)
-    filtered = DigitalFilter(fs=fs).process_array(raw)
+ #   raw = np.asarray(raw)
+  #  filtered = DigitalFilter(fs=fs).process_array(raw)
+   # skip = min(int(config.FILTER_WARMUP_S * fs), len(filtered))
+    #det = RPeakDetector(fs=fs, refractory_ms=config.REFRACTORY_MS)
+    #crossings = [i for i in range(skip, len(filtered))
+     #            if det.step(float(filtered[i]))]
+    #return np.array(_snap_to_apex(filtered, crossings, fs), dtype=np.int64)
+def filter_signal(raw: np.ndarray, fs: int = config.SAMPLING_RATE) -> np.ndarray:
+    """Applica DigitalFilter (notch + bandpass) all'intero array in una sola
+    chiamata batch. Fattorizzata fuori da ``detect_rpeak_indices`` perché
+    ``qrs_duration_ms`` ha bisogno dello stesso segnale filtrato usato per il
+    rilevamento dei picchi: senza questa funzione, calcolarlo separatamente
+    avrebbe richiesto di filtrare l'intera registrazione due volte."""
+    return DigitalFilter(fs=fs).process_array(np.asarray(raw))
+
+
+def detect_rpeaks(filtered: np.ndarray, fs: int = config.SAMPLING_RATE) -> np.ndarray:
+    """Rileva picchi R su un segnale GIA' filtrato.
+
+    I primi ``config.FILTER_WARMUP_S`` secondi vengono scartati: contengono il
+    transitorio di assestamento del passa-alto, che ha ampiezza paragonabile a
+    un'onda R e produrrebbe battiti fantasma. Ogni rilevamento viene infine
+    agganciato all'apice dell'onda R (vedi ``_snap_to_apex``)."""
     skip = min(int(config.FILTER_WARMUP_S * fs), len(filtered))
     det = RPeakDetector(fs=fs, refractory_ms=config.REFRACTORY_MS)
     crossings = [i for i in range(skip, len(filtered))
                  if det.step(float(filtered[i]))]
     return np.array(_snap_to_apex(filtered, crossings, fs), dtype=np.int64)
 
+
+def detect_rpeak_indices(raw: np.ndarray, fs: int = config.SAMPLING_RATE) -> np.ndarray:
+    """Indici (in campioni, riferiti a ``raw``) dei picchi R rilevati.
+
+    Wrapper retro-compatibile: filtra e rileva in un colpo solo. Chi ha
+    bisogno anche del segnale filtrato (es. ``qrs_duration_ms``) chiami
+    ``filter_signal`` + ``detect_rpeaks`` separatamente, per evitare di
+    filtrare due volte lo stesso array."""
+    return detect_rpeaks(filter_signal(raw, fs), fs)
+
+# aggiunta di due funzioni per caclolo durata QRS
+
+def qrs_duration_ms(filtered: np.ndarray, r_idx: int,
+                    fs: int = config.SAMPLING_RATE) -> Optional[float]:
+    """Durata QRS in ms attorno a un picco R già agganciato all'apice.
+
+    Cerca a sinistra/destra del picco il punto in cui la pendenza del segnale
+    torna vicina a zero (ritorno alla linea isoelettrica). None se il segmento
+    è troppo vicino ai bordi del segnale, la finestra è priva di pendenza
+    significativa, o il valore stimato esce dal range fisiologicamente
+    plausibile — in quel caso è quasi certamente un artefatto di rilevamento,
+    non un vero QRS, e va escluso esattamente come un RR fuori range viene
+    escluso da ``clean_rr_mask``."""
+    win = int(config.QRS_SEARCH_S * fs)
+    start, end = max(0, r_idx - win), min(len(filtered), r_idx + win)
+    if end - start < 4:
+        return None
+    seg = filtered[start:end]
+    r_local = r_idx - start
+    deriv = np.abs(np.gradient(seg))
+
+    zone = deriv[max(0, r_local - int(0.02 * fs)):
+                 min(len(deriv), r_local + int(0.02 * fs))]
+    if zone.size == 0 or zone.max() <= 0:
+        return None
+    thr = config.QRS_SLOPE_RATIO * zone.max()
+
+    onset = next((i for i in range(r_local, 0, -1) if deriv[i] < thr), r_local)
+    offset = next((i for i in range(r_local, len(deriv)) if deriv[i] < thr), r_local)
+
+    dur_ms = (offset - onset) * 1000.0 / fs
+    return dur_ms if config.QRS_MIN_MS <= dur_ms <= config.QRS_MAX_MS else None
+
+
+def extract_qrs_durations(filtered: np.ndarray, peaks: np.ndarray,
+                          fs: int = config.SAMPLING_RATE) -> np.ndarray:
+    """Durata QRS per ciascun picco, stesso ordine posizionale di ``peaks``.
+    ``np.nan`` dove non stimabile (bordo segnale o fuori range fisiologico)."""
+    out = np.full(len(peaks), np.nan, dtype=float)
+    for i, p in enumerate(peaks):
+        d = qrs_duration_ms(filtered, int(p), fs)
+        if d is not None:
+            out[i] = d
+    return out
 
 def extract_rr_intervals(raw: np.ndarray, fs: int = config.SAMPLING_RATE) -> np.ndarray:
     """Apply DigitalFilter + RPeakDetector to raw ECG; return RR intervals in seconds."""
