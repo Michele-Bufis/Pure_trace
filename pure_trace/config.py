@@ -16,10 +16,10 @@ SERIAL_BAUD = 115200
 SERIAL_RETRY_S = 2.0  # attesa fra i tentativi di (ri)connessione
 SAMPLING_RATE = 500  # Hz
 
-NOTCH_FREQ = 50.0
+NOTCH_FREQ = 50.0 #da valutare quando metteremo la batteria. Potenzailemnete può rimanere così
 NOTCH_Q = 30.0
-BANDPASS_LOW = 0.5
-BANDPASS_HIGH = 40.0
+BANDPASS_LOW = 0.05 # da 0.5 a 0.05 si rischia che i tratti st siano molto storti
+BANDPASS_HIGH = 40.0 #Anche questo da valutare con un acquisizione. Toccherebbe fa psd
 BANDPASS_ORDER = 4
 
 REFRACTORY_MS = 200
