@@ -38,6 +38,19 @@ FILTER_WARMUP_S = 3.0
 # refrattario (200 ms), quindi non può agganciare il battito successivo.
 APEX_SEARCH_S = 0.050
 
+#----- Parametri Calcolo QRS -----
+# Finestra di ricerca onset/offset QRS attorno al picco già agganciato
+# all'apice. Copre QRS 80-120 ms con margine su entrambi i lati.
+QRS_SEARCH_S = 0.100
+# Soglia di pendenza relativa (rispetto al picco di derivata vicino al
+# picco R) sotto la quale il segnale è considerato tornato isoelettrico.
+QRS_SLOPE_RATIO = 0.05
+# Range di plausibilità fisiologica: fuori da qui è quasi certamente un
+# artefatto di rilevamento, non un vero QRS largo/stretto.
+QRS_MIN_MS = 60.0
+QRS_MAX_MS = 150.0
+#-------
+
 DURATION_LONG_S = 120
 # Durata "libera": è l'operatore a fermare la registrazione. Il limite serve solo
 # come rete di sicurezza (memoria, e una registrazione dimenticata in corso).
