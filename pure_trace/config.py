@@ -92,3 +92,7 @@ BASELINE_INCLUDE_RED = True  # le sessioni RED entrano comunque nella baseline
 CHI2_GREEN_P = 0.95          # quantile soglia GREEN/YELLOW
 CHI2_YELLOW_P = 0.99         # quantile soglia YELLOW/RED
 
+# --- Tinta dei valori metrici nell'archivio ---
+METRIC_TINT_GREEN_Z = 1.0
+METRIC_TINT_YELLOW_Z = 2.0
+

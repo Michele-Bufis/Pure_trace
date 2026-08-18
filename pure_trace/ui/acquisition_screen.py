@@ -265,6 +265,7 @@ class AcquisitionScreen(QWidget):
         self._lod_state: Optional[str] = None
 
         self._build_ui()
+        self._build_error_overlay()
 
         self._lod_timer = QTimer(self)
         self._lod_timer.timeout.connect(self._refresh_lod_indicator)
@@ -295,6 +296,49 @@ class AcquisitionScreen(QWidget):
         body.addWidget(self._build_ecg_card(), stretch=1)
         body.addWidget(self._build_rail())
         root.addLayout(body, stretch=1)
+
+    def _build_error_overlay(self) -> None:
+        """Build a floating, dismissible error toast outside the main layout."""
+        self._error_overlay = QFrame(self)
+        self._error_overlay.setFixedSize(340, 88)
+        self._error_overlay.setStyleSheet(
+            f"background:{theme.RED_SF};border:1px solid {theme.RED};"
+            "border-radius:10px;"
+        )
+        layout = QHBoxLayout(self._error_overlay)
+        layout.setContentsMargins(14, 10, 8, 10)
+        layout.setSpacing(8)
+
+        self._error_label = QLabel()
+        self._error_label.setWordWrap(True)
+        self._error_label.setStyleSheet(
+            f"color:{theme.TEXT};background:transparent;font-size:13px;"
+            "font-weight:600;border:none;")
+        layout.addWidget(self._error_label, stretch=1)
+
+        close = QPushButton('×')
+        close.setAccessibleName('Chiudi errore')
+        close.setFixedSize(28, 28)
+        close.setStyleSheet(
+            f"QPushButton{{color:{theme.MUTED};background:transparent;border:none;"
+            "font-size:24px;font-weight:600;padding:0;}"
+            f"QPushButton:hover{{color:{theme.RED};background:{theme.SURFACE_2};"
+            "border-radius:12px;}"
+        )
+        close.clicked.connect(self._error_overlay.hide)
+        layout.addWidget(close, alignment=Qt.AlignTop)
+        self._error_overlay.hide()
+
+    def _position_error_overlay(self) -> None:
+        margin = 14
+        self._error_overlay.move(
+            max(margin, self.width() - self._error_overlay.width() - margin),
+            64,
+        )
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._position_error_overlay()
 
     # -- top bar (brand · profile · clock · leads pill) -------------------- #
     def _build_top_bar(self) -> QFrame:
@@ -494,6 +538,15 @@ class AcquisitionScreen(QWidget):
         }
         status = status if status in messages else 'NEUTRAL'
         text = messages.get(status) or self._neutral_message(features or {})
+        if (status == 'NEUTRAL'
+                and (features or {}).get('neutral_reason') in {
+                    NEUTRAL_LOW_QUALITY,
+                    NEUTRAL_SHORT_SESSION,
+                    NEUTRAL_BASELINE_ERROR,
+                }):
+            self._result_frame.setVisible(False)
+            self._show_error(text)
+            return
         self._result_label.setText(text)
         self._result_label.setStyleSheet(theme.result_box_qss(theme.STATUS[status]))
         self._result_frame.setVisible(True)
@@ -549,14 +602,15 @@ class AcquisitionScreen(QWidget):
         # Altrimenti un'interruzione avvenuta DURANTE la registrazione faceva
         # sparire da solo l'esito appena mostrato.
         if self._serial_error_shown:
-            self._result_frame.setVisible(False)
+            self._error_overlay.hide()
             self._serial_error_shown = False
         self._rec_btn.setEnabled(state == 'ok')
 
     def _show_error(self, message: str) -> None:
-        self._result_label.setText(message)
-        self._result_label.setStyleSheet(theme.result_box_qss(theme.RED))
-        self._result_frame.setVisible(True)
+        self._error_label.setText(message)
+        self._position_error_overlay()
+        self._error_overlay.show()
+        self._error_overlay.raise_()
 
     def _on_rec_clicked(self) -> None:
         if not self._recording:
@@ -568,6 +622,7 @@ class AcquisitionScreen(QWidget):
         self._recording = True
         self._elapsed_s = 0
         self._result_frame.setVisible(False)
+        self._error_overlay.hide()
         self._ecg.clear()
         self._ecg.auto_range()   # auto-fit the plot (no manual 'A' needed)
         self._hr_label.setText('--')

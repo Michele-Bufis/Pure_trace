@@ -8,6 +8,7 @@ from cryptography.exceptions import InvalidTag
 from pure_trace.data_layer import ProfileManager, EncryptionManager, Profile
 from pure_trace.logging_setup import get_logger
 from pure_trace.ui import theme
+from pure_trace.ui.widgets import ErrorOverlay
 
 log = get_logger(__name__)
 
@@ -26,7 +27,16 @@ class ProfileSelectionDialog(QDialog):
         self.resize(740, 440)
         self.setStyleSheet(f"QDialog{{background:{theme.BG}}}")
         self._build_ui()
+        self._error_overlay = ErrorOverlay(self)
         self._load_profiles()
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._error_overlay.position_top_right(top=14)
+
+    def _show_error(self, message: str) -> None:
+        self._error.setText("")
+        self._error_overlay.show_message(message)
 
     def _build_ui(self) -> None:
         outer = QVBoxLayout(self)
@@ -132,7 +142,7 @@ class ProfileSelectionDialog(QDialog):
     def _load_profiles(self) -> None:
         profiles = self._pm.list_profiles()
         if not profiles:
-            self._error.setText(
+            self._show_error(
                 "Nessun profilo trovato.\nUsa tools/create_profile.py per crearne uno."
             )
             self._btn.setEnabled(False)
@@ -153,7 +163,7 @@ class ProfileSelectionDialog(QDialog):
         try:
             enc = EncryptionManager(profile.dir, password)
         except InvalidTag:
-            self._error.setText("Password errata")
+            self._show_error("Password errata")
             self._pwd.clear()
             self._pwd.setFocus()
             return
@@ -161,7 +171,7 @@ class ProfileSelectionDialog(QDialog):
             # salt.bin o .keycheck mancanti/illeggibili: prima era un
             # FileNotFoundError non catturato che chiudeva l'applicazione.
             log.error("Profilo %s non apribile: %s", profile.id, exc)
-            self._error.setText("Profilo danneggiato: impossibile aprirlo")
+            self._show_error("Profilo danneggiato: impossibile aprirlo")
             return
         # Autenticato: ora si può decifrare il nome reale del paziente.
         self._profile = self._pm.unlock(profile, enc)

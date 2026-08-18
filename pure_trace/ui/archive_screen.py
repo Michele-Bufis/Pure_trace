@@ -30,7 +30,7 @@ try:
         QMessageBox, QPushButton, QScrollArea, QScroller,
         QStackedWidget, QVBoxLayout, QWidget,
     )
-    from pure_trace.ui.widgets import EcgPlotWidget
+    from pure_trace.ui.widgets import EcgPlotWidget, ErrorOverlay
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -551,6 +551,14 @@ class SessionDetailWidget(QWidget):
         self._enc = None
         self._profile: Optional["Profile"] = None
         self._build_ui()
+        self._error_overlay = ErrorOverlay(self)
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._error_overlay.position_top_right()
+
+    def _show_error(self, message: str) -> None:
+        self._error_overlay.show_message(message)
 
     # ── construction ──────────────────────────────────────────────────────
 
@@ -729,8 +737,8 @@ class SessionDetailWidget(QWidget):
         self._export_btn.setEnabled(True)
 
     def _on_decrypt_err(self, msg: str) -> None:
-        self._err_label.setText(f"Errore di lettura: {msg}")
-        self._plot_stack.setCurrentIndex(2)
+        self._plot_stack.setCurrentIndex(1)
+        self._show_error(f"Errore di lettura: {msg}")
 
     def _on_export_clicked(self) -> None:
         if not self._edf_bytes or not self._record:
@@ -760,7 +768,7 @@ class SessionDetailWidget(QWidget):
                      self._record.timestamp.strftime("%Y%m%d_%H%M%S"))
         except Exception as exc:
             log.exception("Export fallito")
-            QMessageBox.critical(self, "Errore export", str(exc))
+            self._show_error(f"Esportazione fallita: {exc}")
 
     def _on_delete_clicked(self) -> None:
         if not self._record:
@@ -788,8 +796,7 @@ class SessionDetailWidget(QWidget):
                              '(schema legacy o mai scorata)', session_id)
             except Exception as exc:
                 log.exception('Rimozione dalla baseline fallita')
-                QMessageBox.critical(
-                    self, "Errore",
+                self._show_error(
                     f"Impossibile aggiornare la baseline: {exc}\n"
                     f"La sessione NON è stata eliminata.")
                 return

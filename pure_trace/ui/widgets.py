@@ -1,12 +1,62 @@
 import numpy as np
 import pyqtgraph as pg
-from PyQt5.QtWidgets import QWidget, QVBoxLayout
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (
+    QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
+)
 from PyQt5.QtGui import QColor
 from pure_trace import config
 from pure_trace.ui import theme
 
 pg.setConfigOption('background', theme.SURFACE)   # white, to match the ECG card
 pg.setConfigOption('foreground', theme.TEXT)
+
+
+class ErrorOverlay(QFrame):
+    """Dismissible error toast that floats above a screen's normal layout."""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setFixedSize(340, 88)
+        self.setStyleSheet(
+            f"background:{theme.RED_SF};border:1px solid {theme.RED};"
+            "border-radius:10px;"
+        )
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(14, 10, 8, 10)
+        layout.setSpacing(8)
+
+        self._label = QLabel()
+        self._label.setWordWrap(True)
+        self._label.setStyleSheet(
+            f"color:{theme.TEXT};background:transparent;font-size:13px;"
+            "font-weight:600;border:none;")
+        layout.addWidget(self._label, stretch=1)
+
+        close = QPushButton('×')
+        close.setAccessibleName('Chiudi errore')
+        close.setFixedSize(28, 28)
+        close.setStyleSheet(
+            f"QPushButton{{color:{theme.MUTED};background:transparent;border:none;"
+            "font-size:24px;font-weight:600;padding:0;}"
+            f"QPushButton:hover{{color:{theme.RED};background:{theme.SURFACE_2};"
+            "border-radius:12px;}"
+        )
+        close.clicked.connect(self.hide)
+        layout.addWidget(close, alignment=Qt.AlignTop)
+        self.hide()
+
+    def show_message(self, message: str) -> None:
+        self._label.setText(message)
+        self.position_top_right()
+        self.show()
+        self.raise_()
+
+    def position_top_right(self, top: int = 64, margin: int = 14) -> None:
+        parent = self.parentWidget()
+        if parent is None:
+            return
+        self.move(max(margin, parent.width() - self.width() - margin), top)
 
 
 def _qcolor(hex_color: str, alpha: int) -> QColor:
