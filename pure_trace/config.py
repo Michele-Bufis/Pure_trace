@@ -82,3 +82,14 @@ LOCAL_RR_YELLOW_Z = 2.5
 # --- Tinta scalari metrici (solo visualizzazione) ---
 METRIC_TINT_GREEN_Z = 1.0
 METRIC_TINT_YELLOW_Z = 2.0
+
+# Finestra di ricerca onset/offset QRS attorno al picco già agganciato
+# all'apice. Copre QRS 80-120 ms con margine su entrambi i lati.
+QRS_SEARCH_S = 0.100
+# Soglia di pendenza relativa (rispetto al picco di derivata vicino al
+# picco R) sotto la quale il segnale è considerato tornato isoelettrico.
+QRS_SLOPE_RATIO = 0.05
+# Range di plausibilità fisiologica: fuori da qui è quasi certamente un
+# artefatto di rilevamento, non un vero QRS largo/stretto.
+QRS_MIN_MS = 60.0
+QRS_MAX_MS = 150.0
