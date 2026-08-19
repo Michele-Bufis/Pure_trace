@@ -5,8 +5,10 @@ dei tempi (timestamp = indice/fs) usata dall'analisi HRV. interpolate_gap
 riempie i buchi piccoli per interpolazione lineare, mantenendo l'allineamento.
 """
 import numpy as np
+import threading
 
-from pure_trace.signal_processing import interpolate_gap
+from pure_trace.signal_processing import CircularBuffer, interpolate_gap
+from pure_trace.ui.acquisition_screen import _SerialThread
 
 
 def test_no_gap_returns_empty():
@@ -36,3 +38,15 @@ def test_values_stay_within_endpoints():
     assert all(-0.4 < v < 0.9 for v in out)
     # monotòni crescenti tra gli estremi
     assert out == sorted(out)
+
+
+def test_large_serial_gap_marks_recording_not_scorable():
+    """Un buco non interpolato non deve essere trattato come tempo inesistente."""
+    thread = _SerialThread(CircularBuffer(100), threading.Event(),
+                           threading.Event(), None, 115200)
+    thread.set_recording(True)
+    thread._ingest(0, 0.0)
+    thread._ingest(thread._MAX_GAP_FILL + 2, 1.0)
+
+    assert thread.has_unfilled_gap is True
+    assert thread.dropped == thread._MAX_GAP_FILL + 1

@@ -21,7 +21,7 @@ from pure_trace.data_layer import Profile, EncryptionManager, EDFWriter
 from pure_trace.analysis_engine import (
     HrvAnalyser, save_session_results,
     NEUTRAL_BASELINE_BUILDING, NEUTRAL_BASELINE_ERROR,
-    NEUTRAL_LOW_QUALITY, NEUTRAL_SHORT_SESSION,
+    NEUTRAL_DATA_GAP, NEUTRAL_LOW_QUALITY, NEUTRAL_SHORT_SESSION,
 )
 from pure_trace.signal_processing import (
     CircularBuffer, DigitalFilter, RPeakDetector, interpolate_gap,
@@ -54,6 +54,7 @@ class _SerialThread(threading.Thread):
         self._last_seq: Optional[int] = None
         self._last_norm: float = 0.0
         self._dropped: int = 0
+        self._has_unfilled_gap = False
         self._error: Optional[str] = None
         self._error_lock = threading.Lock()
 
@@ -78,6 +79,7 @@ class _SerialThread(threading.Thread):
             self._last_seq = None
             self._last_norm = 0.0
             self._dropped = 0
+            self._has_unfilled_gap = False
             self._recording.set()
         else:
             self._recording.clear()
@@ -86,6 +88,11 @@ class _SerialThread(threading.Thread):
     def dropped(self) -> int:
         """Numero di campioni persi rilevati durante l'ultima registrazione."""
         return self._dropped
+
+    @property
+    def has_unfilled_gap(self) -> bool:
+        """True se la registrazione contiene un buco che non conserva il tempo."""
+        return self._has_unfilled_gap
 
     def _ingest(self, seq: Optional[int], normalized: float) -> None:
         """Accoda un campione al buffer condiviso e alla lista grezza.
@@ -104,6 +111,11 @@ class _SerialThread(threading.Thread):
             elif gap > self._MAX_GAP_FILL:
                 # Gap troppo grande: vera interruzione, non interpoliamo.
                 self._dropped += gap
+                # Non basta registrare il contatore: la lista grezza non ha
+                # timestamp separati e l'analisi offline ricava il tempo dagli
+                # indici. Se valutassimo questa lista, l'intervallo RR a cavallo
+                # del buco risulterebbe artificialmente corto.
+                self._has_unfilled_gap = True
         self._last_seq = seq
         self._last_norm = normalized
         self._buf.write(np.array([normalized]))
@@ -508,6 +520,9 @@ class AcquisitionScreen(QWidget):
                     f'(minimo {config.DURATION_MIN_SCORED_S} s)')
         if reason == NEUTRAL_LOW_QUALITY:
             return 'Segnale troppo disturbato: controlla gli elettrodi e ripeti'
+        if reason == NEUTRAL_DATA_GAP:
+            return ('Dati mancanti durante la registrazione: sessione salvata, '
+                    'nessuna valutazione')
         if reason == NEUTRAL_BASELINE_ERROR:
             return 'Baseline illeggibile: sessione salvata, nessuna valutazione'
         return 'Acquisizione non sufficiente per la valutazione'
@@ -543,6 +558,7 @@ class AcquisitionScreen(QWidget):
                     NEUTRAL_LOW_QUALITY,
                     NEUTRAL_SHORT_SESSION,
                     NEUTRAL_BASELINE_ERROR,
+                    NEUTRAL_DATA_GAP,
                 }):
             self._result_frame.setVisible(False)
             self._show_error(text)
@@ -708,7 +724,8 @@ class AcquisitionScreen(QWidget):
         analyser = HrvAnalyser(self._profile, self._enc)
         # Lo stem del file di sessione è anche l'id del vettore in baseline.
         status, colormap, features = analyser.analyse(
-            raw, session_id=ts.strftime('%Y%m%d_%H%M%S'))
+            raw, session_id=ts.strftime('%Y%m%d_%H%M%S'),
+            has_unfilled_gap=self._serial_thread.has_unfilled_gap)
         save_session_results(self._profile, colormap, features, ts, self._enc)
         if analyser.baseline_error:
             # La registrazione è salvata, ma la baseline non è decifrabile: non
