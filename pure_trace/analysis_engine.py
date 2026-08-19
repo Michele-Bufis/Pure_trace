@@ -109,15 +109,26 @@ def qrs_duration_ms(filtered: np.ndarray, r_idx: int,
     seg = filtered[start:end]
     r_local = r_idx - start
     deriv = np.abs(np.gradient(seg))
-
-    zone = deriv[max(0, r_local - int(0.02 * fs)):
-                 min(len(deriv), r_local + int(0.02 * fs))]
+    guard = max(1, int(0.010 * fs))  # ~10 ms: raggio della zona di picco, stessa ampiezza usata per calibrare thr, aggiunta per modifica qrs
+                        #cambio di zone
+    zone_lo = max(0, r_local - guard)
+    zone_hi = min(len(deriv), r_local + guard)
+    zone = deriv[zone_lo:zone_hi]
+   # zone = deriv[max(0, r_local - int(0.02 * fs)):
+                # min(len(deriv), r_local + int(0.02 * fs))]
     if zone.size == 0 or zone.max() <= 0:
         return None
     thr = config.QRS_SLOPE_RATIO * zone.max()
+    # La ricerca parte FUORI dalla zona di picco (dove la derivata è vicina a
+    # zero per definizione, essendo r_local un massimo locale), non dal picco
+    # stesso: altrimenti il primo campione controllato soddisfa già la
+    # condizione di soglia e onset/offset collassano su r_local, dando
+    # sempre durata 0.
+    onset = next((i for i in range(zone_lo, 0, -1) if deriv[i] < thr), zone_lo)
+    offset = next((i for i in range(zone_hi, len(deriv)) if deriv[i] < thr), zone_hi)
 
-    onset = next((i for i in range(r_local, 0, -1) if deriv[i] < thr), r_local)
-    offset = next((i for i in range(r_local, len(deriv)) if deriv[i] < thr), r_local)
+   # onset = next((i for i in range(r_local, 0, -1) if deriv[i] < thr), r_local)
+   # offset = next((i for i in range(r_local, len(deriv)) if deriv[i] < thr), r_local)
 
     dur_ms = (offset - onset) * 1000.0 / fs
     return dur_ms if config.QRS_MIN_MS <= dur_ms <= config.QRS_MAX_MS else None
