@@ -433,8 +433,8 @@ follow their logic:
 | Electric shock risk | IEC 60601-1 — patient must be isolated from mains | Battery-only power, hardware-interlocked against use while charging ([deep dive](#1-choosing-battery-only-power-for-galvanic-isolation)) |
 | Radiated EMI | IEC 60601-1-2 — device must not corrupt its own signals | Grounded copper shielding baffle around the boost converter ([deep dive](#2-tracing-an-emi-problem-to-its-physical-cause)) |
 | Conducted / ambient EMI | IEC 60601-1-2 | Digital 50 Hz notch filter (Q=30) ([deep dive](#3-rejecting-the-noise-that-shielding-cant-stop)) |
-| Data confidentiality | GDPR/HIPAA — data at rest must be protected | AES-128-GCM encryption + padding against metadata leakage ([deep dive](#3-not-leaking-data-through-metadata)) |
-| Data integrity | GDPR/HIPAA — accidental loss must be prevented | Atomic writes, strict corrupted-vs-missing handling ([deep dive](#4-treating-no-data-and-corrupted-data-as-different-failure-modes)) |
+| Data confidentiality | GDPR/HIPAA — data at rest should be protected against unauthorized access | AES-128-GCM encryption + padding against metadata leakage ([deep dive](#3-not-leaking-data-through-metadata)) |
+| Data integrity | GDPR/HIPAA — accidental loss should be mitigated | Atomic writes, strict corrupted-vs-missing handling ([deep dive](#4-treating-no-data-and-corrupted-data-as-different-failure-modes)) |
 
 ## Privacy & data model
 
