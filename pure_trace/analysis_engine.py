@@ -119,16 +119,22 @@ def qrs_duration_ms(filtered: np.ndarray, r_idx: int,
     if zone.size == 0 or zone.max() <= 0:
         return None
     thr = config.QRS_SLOPE_RATIO * zone.max()
-    # La ricerca parte FUORI dalla zona di picco (dove la derivata è vicina a
-    # zero per definizione, essendo r_local un massimo locale), non dal picco
-    # stesso: altrimenti il primo campione controllato soddisfa già la
-    # condizione di soglia e onset/offset collassano su r_local, dando
-    # sempre durata 0.
-    onset = next((i for i in range(zone_lo, 0, -1) if deriv[i] < thr), zone_lo)
-    offset = next((i for i in range(zone_hi, len(deriv)) if deriv[i] < thr), zone_hi)
 
-   # onset = next((i for i in range(r_local, 0, -1) if deriv[i] < thr), r_local)
-   # offset = next((i for i in range(r_local, len(deriv)) if deriv[i] < thr), r_local)
+    # L'apice R ha per definizione pendenza quasi zero. Partire da lì avrebbe
+    # quindi trovato subito ``deriv[r_local] < thr`` su entrambi i lati,
+    # producendo una durata di 0 ms. Si parte invece dal massimo di pendenza di
+    # ciascun fianco del QRS e si cammina verso l'esterno fino al ritorno alla
+    # linea isoelettrica.
+    left = deriv[:r_local]
+    right = deriv[r_local + 1:]
+    if left.size == 0 or right.size == 0:
+        return None
+    left_flank = int(np.argmax(left))
+    right_flank = r_local + 1 + int(np.argmax(right))
+    onset = next((i for i in range(left_flank, -1, -1) if deriv[i] < thr), None)
+    offset = next((i for i in range(right_flank, len(deriv)) if deriv[i] < thr), None)
+    if onset is None or offset is None:
+        return None
 
     dur_ms = (offset - onset) * 1000.0 / fs
     return dur_ms if config.QRS_MIN_MS <= dur_ms <= config.QRS_MAX_MS else None
@@ -208,6 +214,7 @@ NEUTRAL_SHORT_SESSION = "short_session"      # < 60 s: ripeti più lunga
 NEUTRAL_LOW_QUALITY = "low_quality"          # troppi artefatti / pochi battiti
 NEUTRAL_BASELINE_BUILDING = "baseline_building"  # baseline ancora incompleta
 NEUTRAL_BASELINE_ERROR = "baseline_error"    # baseline.json illeggibile
+NEUTRAL_DATA_GAP = "data_gap"                # gap seriale non ricostruibile
 
 
 def features_to_vector(features: dict):
@@ -343,7 +350,8 @@ class HrvAnalyser:
     # ------------------------------------------------------------------
 
     def analyse(
-        self, raw_samples: np.ndarray, session_id: Optional[str] = None
+        self, raw_samples: np.ndarray, session_id: Optional[str] = None,
+        has_unfilled_gap: bool = False,
     ) -> tuple[str, np.ndarray, dict]:
         """Analyse a raw ECG array.
 
@@ -357,6 +365,22 @@ class HrvAnalyser:
         colormap_uint8 : np.ndarray dtype=uint8, one entry per RR interval
         features : dict with mean_rr, sdnn, rmssd, pnn50 (float or None)
         """
+        # Un buco seriale non ricostruito spezza la relazione fra indice del
+        # campione e tempo. Calcolare RR come diff(indici) / fs produrrebbe
+        # intervalli artificialmente corti; salviamo quindi la sessione ma non
+        # la usiamo né per le metriche né per la baseline.
+        if has_unfilled_gap:
+            return ("NEUTRAL", np.array([], dtype=np.uint8), {
+                "mean_rr": None, "sdnn": None, "rmssd": None,
+                "pnn50": None, "qrs_duration": None,
+                "status": "NEUTRAL", "mahalanobis_d2": None,
+                "feature_z": None, "rr_peaks": [],
+                "baseline_error": self.baseline_error,
+                "neutral_reason": NEUTRAL_DATA_GAP,
+                "baseline_progress": [self._model.n, config.MIN_BASELINE_SESSIONS],
+                "quality": {"valid_beats": 0, "artifact_fraction": 1.0},
+            })
+
         filtered = filter_signal(raw_samples, self._fs)
         peaks = detect_rpeaks(filtered, self._fs)
         rr = (np.diff(peaks).astype(np.float64) / self._fs

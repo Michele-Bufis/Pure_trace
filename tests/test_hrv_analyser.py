@@ -12,6 +12,7 @@ from pure_trace.analysis_engine import (
     remove_session_from_baseline,
     NEUTRAL_BASELINE_BUILDING, NEUTRAL_BASELINE_ERROR,
     NEUTRAL_LOW_QUALITY, NEUTRAL_SHORT_SESSION,
+    NEUTRAL_DATA_GAP,
     _GREEN, _RED, _NEUTRAL,
 )
 
@@ -121,6 +122,17 @@ def test_compute_features_all_beats_invalid(profile, enc):
     assert features["sdnn"] is None
 
 
+def test_qrs_duration_searches_outward_from_the_r_peak():
+    """L'apice ha derivata nulla: onset e offset devono venire dai fianchi."""
+    from pure_trace.analysis_engine import qrs_duration_ms
+
+    filtered = np.zeros(500)
+    peak = 250
+    filtered[225:276] = np.r_[np.linspace(0.0, 1.0, 26),
+                                np.linspace(1.0, 0.0, 26)[1:]]
+    assert qrs_duration_ms(filtered, peak, fs=500) == pytest.approx(104.0)
+
+
 # ---------------------------------------------------------------------------
 # Aggancio all'apice dell'onda R
 # ---------------------------------------------------------------------------
@@ -174,6 +186,15 @@ def test_analyse_empty_signal_returns_neutral(profile, enc):
     assert len(colormap) == 0
     assert features["mean_rr"] is None
     assert features["sdnn"] is None
+
+
+def test_unfilled_gap_is_neutral_and_never_enters_baseline(profile, enc):
+    status, colormap, features = HrvAnalyser(profile, enc).analyse(
+        _make_heartbeat_signal(70), has_unfilled_gap=True)
+    assert status == "NEUTRAL"
+    assert len(colormap) == 0
+    assert features["neutral_reason"] == NEUTRAL_DATA_GAP
+    assert HrvAnalyser(profile, enc)._model.n == 0
 
 
 def test_analyse_short_session_sdnn_is_none(profile, enc):
