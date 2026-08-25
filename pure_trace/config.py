@@ -68,6 +68,10 @@ DISPLAY_WINDOW_S = 5  # seconds of ECG visible on screen at once (live)
 ARCHIVE_WINDOW_S = 8  # fixed seconds visible when reviewing a saved recording (no zoom, scroll only)
 
 # --- Filtro artefatti RR / qualità segnale ---
+LOCAL_RR_GREEN_Z=1.5
+LOCAL_RR_YELLOW_Z=2.5
+
+# --- Filtro artefatti RR / qualità segnale ---
 RR_MIN_S = 0.33              # 180 bpm
 RR_MAX_S = 2.0               # 30 bpm
 ARTIFACT_REL_THRESH = 0.20   # scarto max dalla mediana locale
