@@ -200,6 +200,7 @@ _METRICS_DEF = [
     ("rmssd",   "RMSSD",   "ms", 1000.0),
     ("pnn50",   "pNN50",   "%",  1.0),
     ("mean_rr", "Mean RR", "ms", 1000.0),
+    ("qrs_duration", "QRS",     "ms", 1.0),
 ]
 
 
@@ -229,7 +230,7 @@ class MetricsGridWidget(QWidget):
         # Tinta ∝ scostamento per-feature dalla baseline (z). Per la card mean_rr
         # si usa lo z di mean_hr (stessa magnitudo di scostamento del ritmo).
         fz = features.get("feature_z") or {}
-        zkey = {"sdnn": "sdnn", "rmssd": "rmssd", "pnn50": "pnn50", "mean_rr": "mean_hr"}
+        zkey = {"sdnn": "sdnn", "rmssd": "rmssd", "pnn50": "pnn50", "mean_rr": "mean_hr", "qrs_duration": "qrs_duration"}
         for key, _, unit, scale in _METRICS_DEF:
             lbl = self._value_labels[key]
             raw_val = features.get(key)
@@ -348,7 +349,7 @@ class _SessionRowWidget(QWidget):
         lay = QHBoxLayout(box)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(8)
-        for key, label, unit, scale in _METRICS_DEF[:3]:  # sdnn, rmssd, pnn50
+        for key, label, unit, scale in (_METRICS_DEF[0], _METRICS_DEF[1],_METRICS_DEF[2], _METRICS_DEF[4]):  # sdnn, rmssd, pnn50, qrs
             v = features.get(key)
             if v is None:
                 continue
