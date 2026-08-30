@@ -422,12 +422,8 @@ production version would swap components rather than solve these in place:
 - **[`docs/deep-dives.md`](docs/deep-dives.md)** — full write-ups of every
   hardware and software decision summarized above, in English, with code
   pointers.
-- **[`docs/pure_trace_hardware.md`](docs/pure_trace_hardware.md)** — the
-  full hardware reference (Italian): system architecture, per-component
-  specs, power budget, EMC mitigation, wiring map, mechanical/thermal
-  design, bill of materials, and known residual risks.
 - **[`docs/Pure-Trace_documentazione.md`](docs/Complete_Project_Documentation.md)**
-  — a complete theory + code walkthrough (in Italian), covering every
+  — a complete theory + code walkthrough, covering every
   design decision file by file, in more depth than fits here.
 
 ---
