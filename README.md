@@ -82,11 +82,16 @@ failure handling, not just to the statistics.
 
 ### Device-free UI testing
 
-Set `DEBUG=1` before launching the application to inject a protocol-compatible
-Arduino/AD8232 mock. It streams a synthetic 72 bpm ECG and reports connected
-electrodes, so recording, live rendering, signal processing, saving, and the
-archive all use the same path as the physical device. The mode is opt-in and
-must never be used for clinical or sensor validation.
+Set `DEBUG=1` before launching the application to inject `mock_device.py`, a
+protocol-compatible Arduino/AD8232 mock consumed through the same
+`readline()` interface as a real pyserial connection. It streams a stable,
+synthetic 72 bpm single-lead ECG (P‑QRS‑T morphology plus a touch of
+baseline wander and mains residue) and reports leads-off status (`L,0`)
+roughly twice a second, so recording, live rendering, filtering, R-peak
+detection, saving, and the archive all exercise the exact same code path as
+the physical device. The mode is opt-in — `config.DEBUG` defaults to off —
+so a production launch can never silently synthesize data, and it must
+never be used for clinical or sensor validation.
 
 PowerShell:
 
@@ -150,13 +155,13 @@ python -m pure_trace.main
 |---|---|
 | **Analog front-end & power electronics** | Battery-only power delivery for galvanic isolation, boost-converter selection and sizing, hardware high-pass filtering and lead-off detection on the AFE |
 | **EMC / signal integrity** | Diagnosing switching-converter EMI coupling onto a flex display cable; designing and building a directional copper shield to attenuate it |
-| **Embedded firmware** | Non-blocking serial I/O, drift-free timing via `micros()`, a fault-tolerant serial protocol with sequence numbers |
-| **Digital signal processing** | Real-time IIR notch + bandpass filtering with persistent filter state, adaptive R-peak detection, offline vs. streaming filter equivalence |
-| **Applied statistics** | Multivariate outlier detection (Mahalanobis distance), correct small-sample calibration (Hotelling T² instead of χ²), robust (median/MAD) z-scoring |
-| **Applied cryptography** | AES-GCM authenticated encryption, PBKDF2 key derivation, side-channel-aware design (padding to hide plaintext length) |
-| **Concurrent systems** | Producer/consumer threading (serial ↔ processing ↔ UI), a thread-safe circular buffer, a lock-free O(1) sliding-window maximum |
-| **Resilient systems design** | Atomic file writes, crash-safe multi-step operations, explicit "missing vs. corrupted" data handling, hardware-level fault detection (leads-off, dropped frames, power loss) |
-| **Applied UX & mechanical design** | A touch-first interface for a fixed 800×480 embedded display; a custom 3D-printed enclosure (7×6×3 cm) housing all of the above |
+| **Embedded firmware** | Non-blocking serial I/O, drift-free timing via `micros()`, a fault-tolerant serial protocol with sequence numbers (mirrored on the desktop side by gap interpolation and a dropped-sample counter, so a lost frame never silently shifts the RR timebase) |
+| **Digital signal processing** | Real-time IIR notch + bandpass filtering with persistent filter state, adaptive R-peak detection via an O(1) monotonic-deque sliding-window maximum, offline vs. streaming filter equivalence |
+| **Applied statistics** | Multivariate outlier detection (Mahalanobis distance), correct small-sample calibration (Hotelling T² instead of χ²), local-median-based RR artifact rejection tolerant of short artifact bursts |
+| **Applied cryptography** | AES-128-GCM authenticated encryption, PBKDF2-HMAC-SHA256 key derivation (200,000 iterations), side-channel-aware design (fixed-block padding to hide plaintext length) |
+| **Concurrent systems** | Producer/consumer threading (serial ↔ processing ↔ UI), a thread-safe circular buffer with dropped-sample accounting, a lock-free O(1) sliding-window maximum |
+| **Resilient systems design** | Atomic file writes (temp file + fsync + rename + directory fsync), crash-safe multi-step operations (staged, rename-on-completion profile creation), explicit "missing vs. corrupted" data handling, hardware-level fault detection (leads-off, dropped frames) |
+| **Applied UX & mechanical design** | A touch-first interface for a fixed 800×480 embedded display, built as a single-source-of-truth, WCAG AA–verified clinical light theme (one restrained teal accent, semantic green/amber/red reserved strictly for medical status, ≥44px touch targets, visible focus rings); a custom 3D-printed enclosure (7×6×3 cm) housing all of the above |
 
 ---
 
@@ -167,22 +172,39 @@ it's where most of the safety and reliability constraints of the project
 actually live. Four decisions worth knowing about, each with a full
 write-up in [`docs/deep-dives.md`](docs/deep-dives.md):
 
-- **Battery-only power for galvanic isolation** — the device runs
-  exclusively on an internal Li-Po battery and is hardware-locked against
-  use while charging, so patient isolation from the mains doesn't depend on
-  software or configuration to hold.
+- **Battery-only operation, unplugged during use** — the device is always
+  run from its internal 5000 mAh Li-Po (never charged and discharged at the
+  same time), which both sidesteps a voltage-dip failure mode some IP5328P
+  boost modules show under concurrent charge/discharge and keeps the device
+  physically disconnected from the mains for the whole duration of a
+  session. This is an operating procedure, not a certified hardware
+  interlock — the only protection circuit in the power path is the one
+  built into the IP5328P module itself.
   → [Full write-up](docs/deep-dives.md#1-choosing-battery-only-power-for-galvanic-isolation)
 - **Root-causing an EMI problem on the display cable** — intermittent
-  visual noise traced back to the boost converter radiating onto the
-  unshielded DSI flex cable, fixed with a custom copper-tape Faraday shield.
+  visual noise traced back to the IP5328P boost converter's switching
+  inductor (300 kHz–1 MHz) radiating onto the unshielded DSI flex cable a
+  few centimetres away. Fixed with an L-shaped copper-tape shield,
+  deliberately open on two sides so it blocks the direct line-of-sight
+  coupling path without trapping the converter's heat, and grounded through
+  the Pi/Arduino's shared USB ground plane so it doesn't itself become a
+  resonant antenna.
   → [Full write-up](docs/deep-dives.md#2-tracing-an-emi-problem-to-its-physical-cause)
-- **Two-layer EMC strategy** — physical shielding for internally-generated
-  interference, a digital notch filter for externally-picked-up 50 Hz hum;
-  each technique matched to the failure mode it actually solves.
+- **Two-layer EMC strategy** — the boost converter's switching noise on the
+  DSI cable is handled physically (the shielding baffle above); the
+  unshielded ECG electrode leads act as an antenna for ambient 50 Hz mains
+  hum instead, which is rejected in software with a digital notch filter.
+  Two different coupling paths, two different fixes, each applied at the
+  point it actually occurs.
   → [Full write-up](docs/deep-dives.md#3-rejecting-the-noise-that-shielding-cant-stop)
-- **Firmware built for a link that drops samples** — sequence-numbered
-  serial frames and non-blocking I/O mean a dropped sample becomes a known,
-  corrected event instead of a silent timebase drift.
+- **Firmware built for a link that drops samples** — at 500 Hz over a
+  115200-baud serial link (~48% of the available bandwidth), the firmware
+  checks `Serial.availableForWrite()` before every transmission and skips —
+  rather than blocks on — a sample when the 64-byte TX buffer is full,
+  advancing a sequence counter (0–255) so the drop is still visible to the
+  Pi instead of silently shifting the timebase. On the desktop side, the
+  serial-reader thread reconstructs small gaps by linear interpolation and
+  flags a recording as unscorable if a gap is too large to safely fill.
   → [Full write-up](docs/deep-dives.md#4-designing-firmware-for-a-link-that-will-drop-samples)
 
 ## Software highlights
@@ -193,28 +215,34 @@ different questions. Full write-ups, with code pointers, in
 
 - **Calibrating baseline thresholds correctly** — a naive χ² threshold on
   the Mahalanobis distance produced ~20% false positives at small sample
-  sizes; replaced with two-sample Hotelling T² theory built for estimated,
-  not known, parameters.
+  sizes (mean and covariance are *estimated* from the patient's session
+  pool, not known); replaced with two-sample Hotelling T² theory built for
+  that case, with thresholds that widen automatically as the pool shrinks.
   → [Full write-up](docs/deep-dives.md#1-calibrating-the-baseline-thresholds-correctly-not-just-plausibly)
 - **Deciding what "signal fidelity" means** — real-time R-peak detection
   lags the true peak by a breath-modulated amount; offline "apex snapping"
   cut RMSSD error from ~5% to ~1%.
   → [Full write-up](docs/deep-dives.md#2-deciding-what-signal-fidelity-actually-means)
 - **Not leaking data through metadata** — encrypted files still leak beat
-  count through ciphertext length; fixed-size padding closes that side
-  channel.
+  count through ciphertext length (the per-beat colormap and the R-peak
+  index list scale with the number of heartbeats); fixed-block padding
+  closes that side channel so sessions with very different beat counts
+  produce identically-sized files.
   → [Full write-up](docs/deep-dives.md#3-not-leaking-data-through-metadata)
 - **"No data" vs. "corrupted data"** — a decrypt failure on the baseline
   file could silently look like "no baseline yet" and overwrite months of
-  patient history; a strict-mode reader prevents that.
+  patient history; a strict-mode reader raises instead of degrading, so the
+  two failure modes can never be confused where it matters.
   → [Full write-up](docs/deep-dives.md#4-treating-no-data-and-corrupted-data-as-different-failure-modes)
 - **O(1) real-time performance on constrained hardware** — a monotonic
   deque replaces a per-sample O(window) max computation for R-peak
-  detection on the Raspberry Pi.
+  detection on the Raspberry Pi, verified bit-for-bit against a brute-force
+  reference including plateau/tie edge cases.
   → [Full write-up](docs/deep-dives.md#5-real-time-performance-on-hardware-that-doesnt-have-much-to-spare)
-- **Designing for a field that will go wrong** — atomic file writes,
-  staged profile creation, and gap interpolation so a mid-write power loss
-  or a dropped sample never corrupts patient data.
+- **Designing for a field that will go wrong** — atomic file writes (temp
+  file, fsync, rename, directory fsync), staged/rename-on-completion profile
+  creation, and gap interpolation so a mid-write power loss, an interrupted
+  profile setup, or a dropped serial sample never corrupts patient data.
   → [Full write-up](docs/deep-dives.md#6-assuming-the-field-will-go-wrong-because-it-will)
 
 ## Architecture
@@ -254,9 +282,11 @@ follows should be read as a compliance claim. It's a description of which
 design decisions were shaped by which principle.
 
 Electric shock risk is the concern IEC 60601-1 centers on, and it's
-addressed here with battery-only power that's hardware-interlocked against
-use while charging, so patient isolation from the mains doesn't depend on
-software to hold ([hardware highlight](#hardware-highlights)). Radiated EMI,
+approached here by always running the device from its internal battery and
+never charging it while in use ([hardware highlight](#hardware-highlights)) —
+keeping the whole system physically disconnected from the mains for the
+duration of a session, though this is an operating procedure rather than a
+certified, hardware-enforced interlock. Radiated EMI,
 covered by IEC 60601-1-2, is handled with a grounded copper shielding
 baffle around the boost converter, while conducted and ambient EMI is
 rejected with a digital 50 Hz notch filter — two different techniques for
@@ -279,8 +309,18 @@ add-on:
   iterations) → a profile-specific AES-128-GCM key; the password itself is
   never stored.
 - The patient's real name, the raw ECG, HRV metrics, and the baseline model
-  are all encrypted at rest. Only a non-identifying alias is ever shown
-  before login.
+  are all encrypted at rest. Only a non-identifying alias (e.g. auto-derived
+  initials, "M. R.") is ever shown in the profile picker before login; the
+  real name is recovered only after the password decrypts it.
+- The EDF+ writer's file-based API needs the plaintext ECG on disk however
+  briefly before it's encrypted. That intermediate file is written to a RAM
+  filesystem (`/dev/shm`) when available, so the plaintext byte stream never
+  touches the SD card, and it's overwritten with random bytes before being
+  unlinked either way.
+- Derived sidecar files (per-session HRV features, the per-beat colormap)
+  are AES-GCM encrypted and padded to fixed-size blocks, so their file size
+  can't be used to infer the patient's beat count or heart rate without the
+  password.
 - Exporting a session for external clinical tools produces a **plaintext**
   file by necessity — the app surfaces an explicit warning before doing so,
   since protection becomes the user's responsibility from that point on.
@@ -300,6 +340,7 @@ statistical and data pipeline without waiting on certified hardware.
 | Waveshare 4.3" MIPI DSI | 800×480 capacitive UI display | $40 |
 | Li-Po battery (5000 mAh) | Internal power / galvanic isolation | $15 |
 | IP5328P boost module | 3.7 V → 5 V power regulation (18 W) | $5 |
+| Misc. cables, wires & boards |	Wiring, interconnects & prototyping |	$20|
 
 Housed in a custom 3D-printed enclosure (7×6×3 cm) with the copper shielding
 baffle described in the [hardware highlights](#hardware-highlights) mounted
@@ -315,18 +356,25 @@ between the boost converter and the display flex cable.
 
 ```
 pure-trace/
-├── firmware/pure_trace_firmware.ino   # Arduino sketch (ECG front-end)
-├── hardware/                          # enclosure CAD, shielding baffle, power notes
+├── arduino/pure_trace_firmware.ino    # Arduino sketch (ECG front-end)
+├── data/                              # encrypted profiles + rotating logs (config.DATA_DIR)
+├── Raw_edf/                           # exported session EDF+ files (plaintext — see export note)
 ├── pure_trace/                        # application package
 │   ├── main.py, config.py
 │   ├── data_layer.py, secure_store.py       # profiles, encryption, EDF+
 │   ├── analysis_engine.py                   # HRV analysis + baseline model
 │   ├── signal_processing.py, serial_port.py # real-time DSP + serial I/O
+│   ├── mock_device.py                       # protocol-compatible mock (DEBUG=1)
 │   ├── logging_setup.py
 │   └── ui/                                  # PyQt5 screens + design system
+│       ├── acquisition_screen.py, archive_screen.py
+│       ├── profile_dialog.py
+│       └── theme.py, widgets.py
 ├── tools/create_profile.py
+├── tests/                              # pytest suite (DSP, crypto, stats, UI logic)
 ├── docs/
 │   ├── deep-dives.md                  # full hardware + software write-ups
+│   ├── pure_trace_hardware.md         # physical/electrical documentation (power, EMC, thermal, BOM, risks)
 │   └── screenshots/
 └── requirements.txt
 ```
@@ -344,23 +392,40 @@ production version would swap components rather than solve these in place:
 - **Not a diagnostic tool** — reports relative deviations from a personal
   baseline, not medical conditions, by design.
 - **This sensor isn't mV-calibrated.** The AD8232 used for the demo doesn't
-  provide a calibrated analog output; the app states this explicitly rather
-  than implying a precision the hardware doesn't have. A certified front-end
-  would provide a calibrated signal with no change to the software
-  downstream — the statistical layer only ever consumes derived features.
+  provide a calibrated analog output; the app states this explicitly (both
+  in the saved EDF+ header and in the live plot's axis label, as "a.u.")
+  rather than implying a precision the hardware doesn't have. A certified
+  front-end would provide a calibrated signal with no change to the
+  software downstream — the statistical layer only ever consumes derived
+  features.
 - **EMI shielding is bespoke, not certified.** The copper-tape baffle solves
   the specific coupling path observed in this enclosure; a production
   design would need formal EMC testing (radiated + conducted) rather than a
   single hand-built fix.
 - **Secure deletion is a mitigation, not a guarantee** on SD/SSD media with
   wear leveling — a property of the storage medium, independent of the
-  encryption scheme itself.
+  encryption scheme itself. Sensitive files are overwritten with random
+  bytes before deletion as a baseline precaution, but this doesn't
+  guarantee unrecoverability on flash media that transparently remaps
+  writes.
+- **The microSD card is a single point of failure.** There's no storage
+  redundancy; a card failure — most plausibly from a sudden power loss at
+  the battery's discharge cutoff — leaves the device unable to boot.
+- **No heatsink on the Raspberry Pi.** The BCM2711's thermal mass is enough
+  to avoid throttling for sessions up to ~30 minutes without one, which
+  comfortably covers the software's own 15-minute maximum recording length
+  (`config.DURATION_MAX_S`); a session pushed well past that would need
+  active cooling.
 
 ## Full documentation
 
 - **[`docs/deep-dives.md`](docs/deep-dives.md)** — full write-ups of every
   hardware and software decision summarized above, in English, with code
   pointers.
+- **[`docs/pure_trace_hardware.md`](docs/pure_trace_hardware.md)** — the
+  full hardware reference (Italian): system architecture, per-component
+  specs, power budget, EMC mitigation, wiring map, mechanical/thermal
+  design, bill of materials, and known residual risks.
 - **[`docs/Pure-Trace_documentazione.md`](docs/Complete_Project_Documentation.md)**
   — a complete theory + code walkthrough (in Italian), covering every
   design decision file by file, in more depth than fits here.
