@@ -321,8 +321,9 @@ def session_card_qss() -> str:
 def icon_button_qss() -> str:
     """Square icon button (back arrow in the detail header)."""
     return (
-        f"QPushButton{{background:{SURFACE};color:{ACCENT};"
-        f"border:1px solid {BORDER};border-radius:10px}}"
+        f"QPushButton{{background:{SURFACE};color:{TEXT};"
+        f"border:1px solid {BORDER};border-radius:10px;"
+        "padding:0;min-width:0;min-height:0}"
         f"QPushButton:pressed{{background:{SURFACE_2}}}"
     )
 
