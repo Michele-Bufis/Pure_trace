@@ -12,16 +12,16 @@ pg.setConfigOption('background', theme.SURFACE)   # white, to match the ECG card
 pg.setConfigOption('foreground', theme.TEXT)
 
 
-class ErrorOverlay(QFrame):
-    """Dismissible error toast that floats above a screen's normal layout."""
+class MessageOverlay(QFrame):
+    """Dismissible toast that floats above a screen's normal layout.
+
+    The semantic colour is supplied when displaying the message, so the same
+    component can communicate both errors and the outcome of a recording.
+    """
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self.setFixedSize(340, 88)
-        self.setStyleSheet(
-            f"background:{theme.RED_SF};border:1px solid {theme.RED};"
-            "border-radius:10px;"
-        )
         layout = QHBoxLayout(self)
         layout.setContentsMargins(14, 10, 8, 10)
         layout.setSpacing(8)
@@ -33,20 +33,30 @@ class ErrorOverlay(QFrame):
             "font-weight:600;border:none;")
         layout.addWidget(self._label, stretch=1)
 
-        close = QPushButton('×')
-        close.setAccessibleName('Chiudi errore')
-        close.setFixedSize(28, 28)
-        close.setStyleSheet(
-            f"QPushButton{{color:{theme.MUTED};background:transparent;border:none;"
-            "font-size:24px;font-weight:600;padding:0;}"
-            f"QPushButton:hover{{color:{theme.RED};background:{theme.SURFACE_2};"
-            "border-radius:12px;}"
-        )
-        close.clicked.connect(self.hide)
-        layout.addWidget(close, alignment=Qt.AlignTop)
+        self._close = QPushButton('×')
+        self._close.setAccessibleName('Chiudi messaggio')
+        self._close.setFixedSize(28, 28)
+        self._close.clicked.connect(self.hide)
+        layout.addWidget(self._close, alignment=Qt.AlignTop)
         self.hide()
 
-    def show_message(self, message: str) -> None:
+        self._set_tone(theme.RED, theme.RED_SF)
+
+    def _set_tone(self, color: str, background: str) -> None:
+        self.setStyleSheet(
+            f"background:{background};border:1px solid {color};"
+            "border-radius:10px;"
+        )
+        self._close.setStyleSheet(
+            f"QPushButton{{color:{theme.MUTED};background:transparent;border:none;"
+            "font-size:24px;font-weight:600;padding:0;}"
+            f"QPushButton:hover{{color:{color};background:{theme.SURFACE_2};"
+            "border-radius:12px;}"
+        )
+
+    def show_message(self, message: str, *, color: str = theme.RED,
+                     background: str = theme.RED_SF) -> None:
+        self._set_tone(color, background)
         self._label.setText(message)
         self.position_top_right()
         self.show()
@@ -57,6 +67,13 @@ class ErrorOverlay(QFrame):
         if parent is None:
             return
         self.move(max(margin, parent.width() - self.width() - margin), top)
+
+
+class ErrorOverlay(MessageOverlay):
+    """Error-specialised alias retained by screens that only show errors."""
+
+    def show_message(self, message: str) -> None:
+        super().show_message(message, color=theme.RED, background=theme.RED_SF)
 
 
 def _qcolor(hex_color: str, alpha: int) -> QColor:

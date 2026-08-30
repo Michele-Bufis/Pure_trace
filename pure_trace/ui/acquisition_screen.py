@@ -27,7 +27,7 @@ from pure_trace.signal_processing import (
     CircularBuffer, DigitalFilter, RPeakDetector, interpolate_gap,
 )
 from pure_trace.ui import theme
-from pure_trace.ui.widgets import EcgPlotWidget
+from pure_trace.ui.widgets import EcgPlotWidget, MessageOverlay
 
 log = get_logger(__name__)
 
@@ -277,7 +277,7 @@ class AcquisitionScreen(QWidget):
         self._lod_state: Optional[str] = None
 
         self._build_ui()
-        self._build_error_overlay()
+        self._message_overlay = MessageOverlay(self)
 
         self._lod_timer = QTimer(self)
         self._lod_timer.timeout.connect(self._refresh_lod_indicator)
@@ -309,48 +309,9 @@ class AcquisitionScreen(QWidget):
         body.addWidget(self._build_rail())
         root.addLayout(body, stretch=1)
 
-    def _build_error_overlay(self) -> None:
-        """Build a floating, dismissible error toast outside the main layout."""
-        self._error_overlay = QFrame(self)
-        self._error_overlay.setFixedSize(340, 88)
-        self._error_overlay.setStyleSheet(
-            f"background:{theme.RED_SF};border:1px solid {theme.RED};"
-            "border-radius:10px;"
-        )
-        layout = QHBoxLayout(self._error_overlay)
-        layout.setContentsMargins(14, 10, 8, 10)
-        layout.setSpacing(8)
-
-        self._error_label = QLabel()
-        self._error_label.setWordWrap(True)
-        self._error_label.setStyleSheet(
-            f"color:{theme.TEXT};background:transparent;font-size:13px;"
-            "font-weight:600;border:none;")
-        layout.addWidget(self._error_label, stretch=1)
-
-        close = QPushButton('×')
-        close.setAccessibleName('Chiudi errore')
-        close.setFixedSize(28, 28)
-        close.setStyleSheet(
-            f"QPushButton{{color:{theme.MUTED};background:transparent;border:none;"
-            "font-size:24px;font-weight:600;padding:0;}"
-            f"QPushButton:hover{{color:{theme.RED};background:{theme.SURFACE_2};"
-            "border-radius:12px;}"
-        )
-        close.clicked.connect(self._error_overlay.hide)
-        layout.addWidget(close, alignment=Qt.AlignTop)
-        self._error_overlay.hide()
-
-    def _position_error_overlay(self) -> None:
-        margin = 14
-        self._error_overlay.move(
-            max(margin, self.width() - self._error_overlay.width() - margin),
-            64,
-        )
-
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)
-        self._position_error_overlay()
+        self._message_overlay.position_top_right()
 
     # -- top bar (brand · profile · clock · leads pill) -------------------- #
     def _build_top_bar(self) -> QFrame:
@@ -464,17 +425,6 @@ class AcquisitionScreen(QWidget):
 
         lay.addStretch()
 
-        # Result banner (hidden until an acquisition completes)
-        self._result_frame = QFrame()
-        self._result_frame.setVisible(False)
-        rl = QVBoxLayout(self._result_frame)
-        rl.setContentsMargins(0, 0, 0, 0)
-        self._result_label = QLabel()
-        self._result_label.setFont(QFont('Sans', 12))
-        self._result_label.setWordWrap(True)
-        rl.addWidget(self._result_label)
-        lay.addWidget(self._result_frame)
-
         # Big REC button
         self._rec_btn = QPushButton('● Avvia acquisizione')
         self._rec_btn.setEnabled(False)
@@ -553,19 +503,18 @@ class AcquisitionScreen(QWidget):
         }
         status = status if status in messages else 'NEUTRAL'
         text = messages.get(status) or self._neutral_message(features or {})
-        if (status == 'NEUTRAL'
-                and (features or {}).get('neutral_reason') in {
-                    NEUTRAL_LOW_QUALITY,
-                    NEUTRAL_SHORT_SESSION,
-                    NEUTRAL_BASELINE_ERROR,
-                    NEUTRAL_DATA_GAP,
-                }):
-            self._result_frame.setVisible(False)
+        is_error = (status == 'NEUTRAL'
+                    and (features or {}).get('neutral_reason') in {
+                        NEUTRAL_LOW_QUALITY,
+                        NEUTRAL_SHORT_SESSION,
+                        NEUTRAL_BASELINE_ERROR,
+                        NEUTRAL_DATA_GAP,
+                    })
+        if is_error:
             self._show_error(text)
             return
-        self._result_label.setText(text)
-        self._result_label.setStyleSheet(theme.result_box_qss(theme.STATUS[status]))
-        self._result_frame.setVisible(True)
+        color = theme.STATUS[status]
+        self._show_message(text, color=color, background=theme.SOFT[color])
 
     # ------------------------------------------------------------------ #
     #  Internal slots                                                      #
@@ -618,15 +567,16 @@ class AcquisitionScreen(QWidget):
         # Altrimenti un'interruzione avvenuta DURANTE la registrazione faceva
         # sparire da solo l'esito appena mostrato.
         if self._serial_error_shown:
-            self._error_overlay.hide()
+            self._message_overlay.hide()
             self._serial_error_shown = False
         self._rec_btn.setEnabled(state == 'ok')
 
     def _show_error(self, message: str) -> None:
-        self._error_label.setText(message)
-        self._position_error_overlay()
-        self._error_overlay.show()
-        self._error_overlay.raise_()
+        self._show_message(message, color=theme.RED, background=theme.RED_SF)
+
+    def _show_message(self, message: str, *, color: str, background: str) -> None:
+        self._message_overlay.show_message(
+            message, color=color, background=background)
 
     def _on_rec_clicked(self) -> None:
         if not self._recording:
@@ -637,8 +587,7 @@ class AcquisitionScreen(QWidget):
     def _start_recording(self) -> None:
         self._recording = True
         self._elapsed_s = 0
-        self._result_frame.setVisible(False)
-        self._error_overlay.hide()
+        self._message_overlay.hide()
         self._ecg.clear()
         self._ecg.auto_range()   # auto-fit the plot (no manual 'A' needed)
         self._hr_label.setText('--')
