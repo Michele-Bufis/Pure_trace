@@ -431,6 +431,10 @@ production version would swap components rather than solve these in place:
 <div align="center">
 
 **Michele Bufis** · [LinkedIn](https://www.linkedin.com/in/michele-pasquale-bufis-7362242a0) · michelebufis2002@gmail.com
+**Francesco D'Angelo** · [LinkedIn](...) · francydan.fd@gmail.com
+**Vittorio Rainone** · [LinkedIn](...) · vittorio.rainone.03@gmail.com
+
+
 
 <sub>Built as a research prototype exploring analog/embedded hardware, signal processing, applied statistics, and secure data handling.</sub>
 
