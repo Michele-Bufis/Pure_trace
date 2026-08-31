@@ -334,8 +334,32 @@ systemd). Overridable via the `PURE_TRACE_DATA` environment variable.
 **Task: serial and sampling parameters.** `SERIAL_PORT` (auto-detected if
 `None`), `SERIAL_BAUD`, `SERIAL_RETRY_S`, `SAMPLING_RATE` (500 Hz).
 
-**Task: digital filter parameters.** Notch frequency and Q (50 Hz, for mains
-power), bandpass band (0.5–40 Hz) and its order.
+**Task: digital filter parameters.** Notch frequency and Q (50 Hz, Q=30,
+for mains power); bandpass band and order (currently **0.05–40 Hz**, order
+4). The low cutoff was lowered from an earlier 0.5 Hz specifically because,
+per the in-code comment, at 0.5 Hz the ST segment came out visibly
+distorted. A separate comment elsewhere in the same file (on
+`FILTER_WARMUP_S`) still refers to "the 0.5 Hz highpass" — that comment is
+now stale and should be updated to match the current 0.05 Hz value; a unit
+test (`test_digital_filter.py::test_sample_by_sample_matches_batch`) also
+still hardcodes a `0.5` Hz reference filter for its cross-check, which is
+worth revisiting for the same reason.
+
+**Task: QRS onset/offset parameters.** A separate set of parameters governs
+measuring the width of the QRS complex once an R-peak has already been
+anchored: a ±100 ms search window around the peak (`QRS_SEARCH_S`) within
+which the local slope is tracked outward from the peak; the edge of the
+complex is taken to be the point where that slope drops below 5% of the
+steepest slope found near the R-peak (`QRS_SLOPE_RATIO`) — i.e. where the
+trace is judged to have returned to isoelectric. The resulting duration is
+only accepted if it falls between 60 and 150 ms (`QRS_MIN_MS`/`QRS_MAX_MS`);
+outside that range it's treated as a detection artifact rather than a
+genuinely unusual QRS width. *(`analysis_engine.py`'s source wasn't
+available for this documentation pass — this paragraph is reconstructed
+from `config.py`'s parameters and their comments, not from the function
+that actually consumes them, so the exact function name and how the
+resulting width is used downstream — a stored feature, a quality gate, or
+purely diagnostic — could not be confirmed here.)*
 
 **Task: R-peak detection parameters.** Refractory period (200 ms), local
 amplitude estimation window, threshold fraction relative to the local
@@ -387,7 +411,9 @@ bounded-length FIFO queue shared between the serial thread (which writes)
 and the processing thread (which reads); on overflow it drops the oldest
 samples, but **counts** how many it drops (`take_dropped()`), so the
 consumer can realign its own time index instead of letting it silently
-drift.
+drift. `read(n)` never blocks and never pads: it returns however many
+samples are actually available (up to `n`), popped destructively from the
+front of the queue.
 
 **Task: digital filtering of the signal.** `DigitalFilter` applies a notch
 filter (for 50 Hz mains noise) and a 0.5–40 Hz bandpass filter (to remove
@@ -404,8 +430,45 @@ constant time instead of recomputing it over the whole window every time),
 and enforces a minimum refractory period between two consecutive detections
 to avoid double-counting the same beat. It also exposes a current heart
 rate, computed as a moving average of the most recent RR intervals.
+Detection also stays disabled until the amplitude window itself has filled
+to at least a quarter of its length (`window_size // 4`) — a second,
+distinct warm-up from the 3-second filter transient discarded offline
+(`config.FILTER_WARMUP_S`): this one exists simply because a mostly-empty
+window has no meaningful maximum to threshold against yet, independent of
+how settled the filter itself is.
 
-## `analysis_engine.py` — offline HRV analysis and baseline model
+## `mock_device.py` — protocol-compatible mock device (DEBUG=1)
+
+**Task: emitting the exact same line protocol as the real Arduino.**
+`MockSerialDevice` is consumed through `readline()` just like a pyserial
+connection, and emits the identical two message types the firmware sends:
+`D,<seq>,<val>\n` samples and `L,0\n` lead-off status, with the sequence
+counter wrapping at 256 (`& 0xFF`) exactly as the firmware does. This keeps
+the serial parser, buffering, DSP, and UI on the same code path whether the
+data comes from hardware or from the mock.
+
+**Task: a plausible, deliberately imperfect synthetic ECG.** `_ecg_adc_value()`
+builds a 72 bpm waveform as a sum of Gaussian "bumps" for the P, Q, R, S,
+and T waves (positioned and scaled by hand, with the R-wave the dominant
+one), plus **two intentional imperfections**: a slow 0.25 Hz sinusoid for
+baseline wander, and a small 50 Hz sinusoid standing in for mains
+interference. The 50 Hz component in particular means the notch filter has
+something real to remove even when running against the mock — useful for
+noticing at a glance, without any hardware attached, whether the filter
+pipeline is actually doing something.
+
+**Task: a known limitation of the mock.** `readline()` always returns
+`L,0` (electrodes connected); the mock has no code path for reporting
+`L,1` (lead-off). It's therefore useful for exercising recording, live
+rendering, filtering, and the archive, but **cannot** be used to test the
+UI's handling of a disconnected-electrode state — that still requires the
+physical AD8232.
+
+**Task: fast, deterministic tests.** `realtime=False` skips the
+`time.sleep(1/sample_rate)` between lines, so a test can drain thousands of
+samples instantly instead of waiting in real time.
+
+
 
 **Task: sample-accurate offline R-peak detection.**
 `detect_rpeak_indices()` filters the entire recording in one pass, discards
@@ -416,7 +479,10 @@ first sample that crosses the threshold, not on the peak, and this lag
 varies beat by beat because R-wave amplitude is modulated by breathing — an
 effect that would leak directly into RMSSD, the metric that measures
 variation between successive beats (measured: an error of roughly +5% on
-RMSSD is reduced to +1% with this correction).
+RMSSD is reduced to +1% with this correction). The search window used for
+this correction is 50 ms (`config.APEX_SEARCH_S`) — wide enough to cover
+the QRS upstroke (~40 ms) but comfortably under the 200 ms refractory
+period, so it can never latch onto the following beat.
 
 **Task: artifact rejection.** `clean_rr_mask()` implements the logic
 described in Part 1: physiological range plus deviation from the local
@@ -514,6 +580,8 @@ cryptographic material, `identity.json` with the encrypted real name) in a
 hidden temporary folder, and renames it to its final location **only once
 the structure is complete**; any exception during construction cleans up
 the temporary folder, so a half-made profile is never left behind.
+(`profile.json` also carries a `schema` tag, currently `"profile-v2"`,
+reserved for future format migrations.)
 
 **Task: unlocking a profile after login.** `unlock()` decrypts
 `identity.json` (if present) to retrieve the patient's real name; on
@@ -538,6 +606,9 @@ sensor used doesn't provide a calibrated output) to a temporary EDF+ file
 (`shred`), then encrypts the resulting bytes and writes them **atomically**
 into the profile's sessions folder. It explicitly rejects recordings that
 are too short (fewer than 500 samples), raising an error handled upstream.
+(One coupling worth flagging: the `500` written into the EDF signal header
+is a literal, not a read of `config.SAMPLING_RATE` — the two would need to
+be kept in sync by hand if the sampling rate is ever changed.)
 
 ## `secure_store.py` — encryption at rest for derived data
 
@@ -582,14 +653,24 @@ read-only filesystem without preventing the app from starting.
 
 **Task: starting the application.** `main()` configures logging, creates the
 Qt application with the style and global stylesheet defined in `theme.py`,
-shows the profile-selection dialog, and — only if the user authenticates
-successfully — opens the main window in full-screen mode.
+and shows the profile-selection dialog. Cancelling that dialog exits
+immediately via `sys.exit(0)` — no main window is ever built. On successful
+login, the main window opens in one of three distinct modes, not a single
+"full-screen": a fixed 800×480 window (not fullscreen) when `DEBUG=1`, to
+compare the layout against the physical device's proportions on an
+ordinary desktop; maximized (not fullscreen) under WSL, because WSLg can
+render a fullscreen Qt window without forwarding pointer input to it; and
+true fullscreen otherwise, for the physical appliance.
 
 **Task: orchestrating the two screens.** `MainWindow` contains a
 `QStackedWidget` with `AcquisitionScreen` (page 0) and `ArchiveScreen` (page
 1), plus a `TabBar` at the bottom to switch between them; when switching to
 the archive, its session list is reloaded (`load()`), so any just-recorded
-sessions appear immediately.
+sessions appear immediately. Live monitoring on the acquisition screen
+starts immediately when the main window is constructed
+(`self._acq.start_monitoring()`), before the operator has even switched to
+that tab — the ECG trace and heart rate are always live in the background,
+not something the operator has to opt into.
 
 **Task: clean shutdown.** `ESC` quits the app (handy during development on a
 PC); `closeEvent` explicitly calls `shutdown()` on the acquisition screen
@@ -1244,7 +1325,7 @@ Raspberry Pi 4B
     ├─ deserialization (SerialThread)
     ├─ cascaded digital IIR filter, SOS form:
     │    ├─ 50 Hz notch (Q=30): removes mains interference
-    │    └─ Butterworth 0.5–40 Hz bandpass (order 4): removes DC drift and EMG noise
+    │    └─ Butterworth 0.05–40 Hz bandpass (order 4): removes DC drift and EMG noise
     ├─ R-peak detector (adaptive threshold, 0.6×max, 200 ms refractory)
     └─ HRV analysis → display
 ```

@@ -340,7 +340,6 @@ statistical and data pipeline without waiting on certified hardware.
 | Waveshare 4.3" MIPI DSI | 800×480 capacitive UI display | $40 |
 | Li-Po battery (5000 mAh) | Internal power / galvanic isolation | $15 |
 | IP5328P boost module | 3.7 V → 5 V power regulation (18 W) | $5 |
-| Misc. cables, wires & boards |	Wiring, interconnects & prototyping |	$20|
 
 Housed in a custom 3D-printed enclosure (7×6×3 cm) with the copper shielding
 baffle described in the [hardware highlights](#hardware-highlights) mounted
@@ -374,7 +373,7 @@ pure-trace/
 ├── tests/                              # pytest suite (DSP, crypto, stats, UI logic)
 ├── docs/
 │   ├── deep-dives.md                  # full hardware + software write-ups
-│   ├── pure_trace_hardware.md         # physical/electrical documentation (power, EMC, thermal, BOM, risks)
+│   ├── Complete_Project_Documentation.md   # full theory + code + hardware walkthrough
 │   └── screenshots/
 └── requirements.txt
 ```
@@ -422,19 +421,17 @@ production version would swap components rather than solve these in place:
 - **[`docs/deep-dives.md`](docs/deep-dives.md)** — full write-ups of every
   hardware and software decision summarized above, in English, with code
   pointers.
-- **[`docs/Pure-Trace_documentazione.md`](docs/Complete_Project_Documentation.md)**
-  — a complete theory + code walkthrough, covering every
-  design decision file by file, in more depth than fits here.
+- **[`docs/Complete_Project_Documentation.md`](docs/Complete_Project_Documentation.md)**
+  — the complete theory + code + hardware walkthrough, covering every
+  design decision file by file (including the physical/electrical design:
+  power budget, EMC mitigation, wiring, thermal management, bill of
+  materials, and known residual risks), in more depth than fits here.
 
 ---
 
 <div align="center">
 
 **Michele Bufis** · [LinkedIn](https://www.linkedin.com/in/michele-pasquale-bufis-7362242a0) · michelebufis2002@gmail.com
-**Francesco D'Angelo** · [LinkedIn](...) · francydan.fd@gmail.com
-**Vittorio Rainone** · [LinkedIn](...) · vittorio.rainone.03@gmail.com
-
-
 
 <sub>Built as a research prototype exploring analog/embedded hardware, signal processing, applied statistics, and secure data handling.</sub>
 
