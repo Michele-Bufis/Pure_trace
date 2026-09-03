@@ -7,8 +7,8 @@ Analog & embedded hardware · signal processing · applied statistics · encrypt
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%204B-c51a4a?logo=raspberrypi&logoColor=white)](https://www.raspberrypi.com/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-[![Status](https://img.shields.io/badge/status-research%20prototype-orange)](#️-disclaimer)
+[![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue.svg)](./LICENSE)
+[![Status](https://img.shields.io/badge/status-research%20prototype-orange)](#disclaimer)
 
 `analog-frontend` · `embedded-firmware` · `signal-processing` · `applied-statistics` · `cryptography` · `concurrent-systems` · `emc-shielding` · `desktop-ui`
 
@@ -24,6 +24,8 @@ Analog & embedded hardware · signal processing · applied statistics · encrypt
 </p>
 
 ---
+
+<a id="disclaimer"></a>
 
 ## ⚠️ Disclaimer
 
@@ -49,7 +51,7 @@ clinician reads?*
 
 This README gives the overview — **what was built, why, and where to look
 for more.** The full reasoning behind each hardware and software decision
-lives in [`docs/deep-dives.md`](docs/deep-dives.md), one write-up per
+lives in [`docs/Deep_dives.md`](docs/Deep_dives.md), one write-up per
 decision, so this file stays scannable.
 
 ## The idea
@@ -146,6 +148,7 @@ python -m pure_trace.main
 - [Project structure](#project-structure)
 - [Production-readiness considerations](#production-readiness-considerations)
 - [Full documentation](#full-documentation)
+- [License](#license)
 
 ---
 
@@ -170,7 +173,7 @@ python -m pure_trace.main
 The physical layer wasn't treated as a commodity part to buy and forget —
 it's where most of the safety and reliability constraints of the project
 actually live. Four decisions worth knowing about, each with a full
-write-up in [`docs/deep-dives.md`](docs/deep-dives.md):
+write-up in [`docs/Deep_dives.md`](docs/Deep_dives.md):
 
 - **Battery-only operation, unplugged during use** — the device is always
   run from its internal 5000 mAh Li-Po (never charged and discharged at the
@@ -180,7 +183,7 @@ write-up in [`docs/deep-dives.md`](docs/deep-dives.md):
   session. This is an operating procedure, not a certified hardware
   interlock — the only protection circuit in the power path is the one
   built into the IP5328P module itself.
-  → [Full write-up](docs/deep-dives.md#1-choosing-battery-only-power-for-galvanic-isolation)
+  → [Full write-up](docs/Deep_dives.md#1-choosing-battery-only-power-for-galvanic-isolation)
 - **Root-causing an EMI problem on the display cable** — intermittent
   visual noise traced back to the IP5328P boost converter's switching
   inductor (300 kHz–1 MHz) radiating onto the unshielded DSI flex cable a
@@ -189,14 +192,14 @@ write-up in [`docs/deep-dives.md`](docs/deep-dives.md):
   coupling path without trapping the converter's heat, and grounded through
   the Pi/Arduino's shared USB ground plane so it doesn't itself become a
   resonant antenna.
-  → [Full write-up](docs/deep-dives.md#2-tracing-an-emi-problem-to-its-physical-cause)
+  → [Full write-up](docs/Deep_dives.md#2-tracing-an-emi-problem-to-its-physical-cause)
 - **Two-layer EMC strategy** — the boost converter's switching noise on the
   DSI cable is handled physically (the shielding baffle above); the
   unshielded ECG electrode leads act as an antenna for ambient 50 Hz mains
   hum instead, which is rejected in software with a digital notch filter.
   Two different coupling paths, two different fixes, each applied at the
   point it actually occurs.
-  → [Full write-up](docs/deep-dives.md#3-rejecting-the-noise-that-shielding-cant-stop)
+  → [Full write-up](docs/Deep_dives.md#3-rejecting-the-noise-that-shielding-cant-stop)
 - **Firmware built for a link that drops samples** — at 500 Hz over a
   115200-baud serial link (~48% of the available bandwidth), the firmware
   checks `Serial.availableForWrite()` before every transmission and skips —
@@ -205,45 +208,45 @@ write-up in [`docs/deep-dives.md`](docs/deep-dives.md):
   Pi instead of silently shifting the timebase. On the desktop side, the
   serial-reader thread reconstructs small gaps by linear interpolation and
   flags a recording as unscorable if a gap is too large to safely fill.
-  → [Full write-up](docs/deep-dives.md#4-designing-firmware-for-a-link-that-will-drop-samples)
+  → [Full write-up](docs/Deep_dives.md#4-designing-firmware-for-a-link-that-will-drop-samples)
 
 ## Software highlights
 
 Six moments where "it works" and "it's actually correct" turned out to be
 different questions. Full write-ups, with code pointers, in
-[`docs/deep-dives.md`](docs/deep-dives.md):
+[`docs/Deep_dives.md`](docs/Deep_dives.md):
 
 - **Calibrating baseline thresholds correctly** — a naive χ² threshold on
   the Mahalanobis distance produced ~20% false positives at small sample
   sizes (mean and covariance are *estimated* from the patient's session
   pool, not known); replaced with two-sample Hotelling T² theory built for
   that case, with thresholds that widen automatically as the pool shrinks.
-  → [Full write-up](docs/deep-dives.md#1-calibrating-the-baseline-thresholds-correctly-not-just-plausibly)
+  → [Full write-up](docs/Deep_dives.md#1-calibrating-the-baseline-thresholds-correctly-not-just-plausibly)
 - **Deciding what "signal fidelity" means** — real-time R-peak detection
   lags the true peak by a breath-modulated amount; offline "apex snapping"
   cut RMSSD error from ~5% to ~1%.
-  → [Full write-up](docs/deep-dives.md#2-deciding-what-signal-fidelity-actually-means)
+  → [Full write-up](docs/Deep_dives.md#2-deciding-what-signal-fidelity-actually-means)
 - **Not leaking data through metadata** — encrypted files still leak beat
   count through ciphertext length (the per-beat colormap and the R-peak
   index list scale with the number of heartbeats); fixed-block padding
   closes that side channel so sessions with very different beat counts
   produce identically-sized files.
-  → [Full write-up](docs/deep-dives.md#3-not-leaking-data-through-metadata)
+  → [Full write-up](docs/Deep_dives.md#3-not-leaking-data-through-metadata)
 - **"No data" vs. "corrupted data"** — a decrypt failure on the baseline
   file could silently look like "no baseline yet" and overwrite months of
   patient history; a strict-mode reader raises instead of degrading, so the
   two failure modes can never be confused where it matters.
-  → [Full write-up](docs/deep-dives.md#4-treating-no-data-and-corrupted-data-as-different-failure-modes)
+  → [Full write-up](docs/Deep_dives.md#4-treating-no-data-and-corrupted-data-as-different-failure-modes)
 - **O(1) real-time performance on constrained hardware** — a monotonic
   deque replaces a per-sample O(window) max computation for R-peak
   detection on the Raspberry Pi, verified bit-for-bit against a brute-force
   reference including plateau/tie edge cases.
-  → [Full write-up](docs/deep-dives.md#5-real-time-performance-on-hardware-that-doesnt-have-much-to-spare)
+  → [Full write-up](docs/Deep_dives.md#5-real-time-performance-on-hardware-that-doesnt-have-much-to-spare)
 - **Designing for a field that will go wrong** — atomic file writes (temp
   file, fsync, rename, directory fsync), staged/rename-on-completion profile
   creation, and gap interpolation so a mid-write power loss, an interrupted
   profile setup, or a dropped serial sample never corrupts patient data.
-  → [Full write-up](docs/deep-dives.md#6-assuming-the-field-will-go-wrong-because-it-will)
+  → [Full write-up](docs/Deep_dives.md#6-assuming-the-field-will-go-wrong-because-it-will)
 
 ## Architecture
 
@@ -372,7 +375,7 @@ pure-trace/
 ├── tools/create_profile.py
 ├── tests/                              # pytest suite (DSP, crypto, stats, UI logic)
 ├── docs/
-│   ├── deep-dives.md                  # full hardware + software write-ups
+│   ├── Deep_dives.md                  # full hardware + software write-ups
 │   ├── Complete_Project_Documentation.md   # full theory + code + hardware walkthrough
 │   └── screenshots/
 └── requirements.txt
@@ -418,7 +421,7 @@ production version would swap components rather than solve these in place:
 
 ## Full documentation
 
-- **[`docs/deep-dives.md`](docs/deep-dives.md)** — full write-ups of every
+- **[`docs/Deep_dives.md`](docs/Deep_dives.md)** — full write-ups of every
   hardware and software decision summarized above, in English, with code
   pointers.
 - **[`docs/Complete_Project_Documentation.md`](docs/Complete_Project_Documentation.md)**
@@ -426,6 +429,16 @@ production version would swap components rather than solve these in place:
   design decision file by file (including the physical/electrical design:
   power budget, EMC mitigation, wiring, thermal management, bill of
   materials, and known residual risks), in more depth than fits here.
+
+---
+
+## License
+
+Pure-Trace source code is available under the
+[GNU General Public License v3.0](LICENSE).
+Third-party dependencies are installed separately through `requirements.txt`
+and remain subject to their own licenses. PyQt5 is used under its GPLv3 terms,
+so distributed derivatives of Pure-Trace must also comply with GPLv3.
 
 ---
 
