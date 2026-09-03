@@ -20,7 +20,7 @@ Analog & embedded hardware · signal processing · applied statistics · encrypt
     touchscreen + Arduino/AD8232 + enclosure) running the acquisition screen.
     docs/screenshots/hero.png — 1200px wide recommended.
   -->
-  <img src="docs/screenshots/hero.png" alt="Pure-Trace device running the acquisition screen" width="800">
+  <img src="docs/screenshots/hero.jpeg" alt="Pure-Trace device running the acquisition screen" width="800">
 </p>
 
 ---
@@ -107,7 +107,7 @@ python -m pure_trace.main
 <!--
   Replace the placeholders below with real screenshots once available.
   Suggested shots (docs/screenshots/):
-    - device_enclosure.png  -> assembled device, enclosure + shielding baffle
+    - device_enclosure.jpeg  -> assembled device, enclosure + shielding baffle
     - profile_login.png     -> profile selector + password screen
     - acquisition_live.png  -> live ECG trace + heart rate during a recording
     - archive_list.png      -> session list with status colors
