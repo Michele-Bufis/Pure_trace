@@ -38,7 +38,7 @@ class EncryptionManager:
             algorithm=hashes.SHA256(),
             length=16,
             salt=salt,
-            iterations=200_000,
+            iterations=600_000,
         )
         return kdf.derive(password.encode())
 
