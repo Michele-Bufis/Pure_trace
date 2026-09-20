@@ -555,7 +555,7 @@ every analyzed session to disk.
 
 **Task: deriving and managing the profile's encryption key.**
 `EncryptionManager` derives a 128-bit AES key from the user's password using
-PBKDF2-HMAC-SHA256 with 200,000 iterations and a profile-specific random
+PBKDF2-HMAC-SHA256 with 600,000 iterations and a profile-specific random
 salt, then uses AES-GCM (authenticated encryption) to encrypt/decrypt data.
 On creation, the password is verified by attempting to decrypt a small
 "sentinel" encrypted during setup (`.keycheck`): if the password is wrong,

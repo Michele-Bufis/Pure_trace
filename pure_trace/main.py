@@ -3,7 +3,7 @@ import platform
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QStackedWidget, QVBoxLayout, QWidget,
+    QApplication, QMainWindow, QMessageBox, QStackedWidget, QVBoxLayout, QWidget,
 )
 from pure_trace import config, logging_setup
 from pure_trace.data_layer import ProfileManager
@@ -38,6 +38,7 @@ class MainWindow(QMainWindow):
 
         self._tab_bar = TabBar()
         self._tab_bar.tab_changed.connect(self._on_tab_changed)
+        self._tab_bar.legal_requested.connect(self._show_legal_notice)
         self._tab_bar.exit_requested.connect(self.close)
 
         wrapper = QWidget()
@@ -54,6 +55,27 @@ class MainWindow(QMainWindow):
         self._main_stack.setCurrentIndex(index)
         if index == 1:
             self._archive.load()
+
+    def _show_legal_notice(self) -> None:
+        """Show the GPLv3 notice required by the interactive application."""
+        notice = QMessageBox(self)
+        notice.setWindowTitle("Pure-Trace — Informazioni legali")
+        notice.setIcon(QMessageBox.Information)
+        notice.setText(
+            "Pure-Trace\n"
+            "Copyright (C) 2026 Pure-Trace contributors\n\n"
+            "Questo programma è software libero distribuito ai sensi della "
+            "GNU General Public License versione 3. Puoi ridistribuirlo e "
+            "modificarlo secondo i termini della licenza."
+        )
+        notice.setInformativeText(
+            "Il programma è fornito SENZA ALCUNA GARANZIA, inclusa qualsiasi "
+            "garanzia implicita di commerciabilità o idoneità a uno scopo specifico.\n\n"
+            "La licenza completa, le note sulle dipendenze e il codice sorgente "
+            "corrispondente sono disponibili all'indirizzo:\n"
+            "https://github.com/Michele-Bufis/Pure_trace"
+        )
+        notice.exec_()
 
     def keyPressEvent(self, event):
         # ESC quits — handy on a PC/keyboard during development.

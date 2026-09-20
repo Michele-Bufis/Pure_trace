@@ -864,6 +864,7 @@ class ArchiveScreen(QWidget):
 
 class TabBar(QWidget):
     tab_changed: pyqtSignal = pyqtSignal(int)
+    legal_requested: pyqtSignal = pyqtSignal()
     exit_requested: pyqtSignal = pyqtSignal()
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
@@ -882,8 +883,16 @@ class TabBar(QWidget):
             btn.setStyleSheet(_style)
             layout.addWidget(btn)
 
-        # Exit button (✕) — always reachable from the bottom bar so the
-        # fullscreen app can be closed by touch, with no window title bar.
+        # Legal-information and exit buttons stay reachable in fullscreen,
+        # where no native menu bar is available.
+        self._btn_legal = QPushButton("ⓘ")
+        self._btn_legal.setToolTip("Informazioni legali e licenza GPLv3")
+        self._btn_legal.setFont(QFont("Sans", 15))
+        self._btn_legal.setFixedWidth(64)
+        self._btn_legal.setStyleSheet(_style)
+        self._btn_legal.clicked.connect(self.legal_requested)
+        layout.addWidget(self._btn_legal)
+
         self._btn_exit = QPushButton("✕")
         self._btn_exit.setFont(QFont("Sans", 15))
         self._btn_exit.setFixedWidth(64)
