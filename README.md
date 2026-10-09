@@ -120,7 +120,7 @@ python -m pure_trace.main
     <td align="center"><b>Login / profile selection</b></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/device_enclosure.png" width="380"></td>
+    <td><img src="docs/screenshots/device_enclosure.jpeg" width="380"></td>
     <td><img src="docs/screenshots/profile_login.png" width="380"></td>
   </tr>
   <tr>
