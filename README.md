@@ -1,3 +1,8 @@
+> [!NOTE]
+> **🎓 Project Background**
+>
+> Originally just a basic concept from a Bachelor's thesis, this project was fully developed and expanded by our independent team as an official submission for a university competition.
+
 <div align="center">
 
 # Pure-Trace
